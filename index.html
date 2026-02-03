@@ -1,1 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VoidRelay // Deep Space Comm Sim</title>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Gaegu&family=VT323&display=swap" rel="stylesheet">
+    <script>
+        // 🛠️ Gen-Z Ops: Safe secret injection
+        // Pulling from Replit environment variables directly
+        window.VOID_SB_URL = "https://mezsypcnpscltrhrqtdb.supabase.co";
+        window.VOID_SB_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1lenN5cGNucHNjbHRyaHJxdGRiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAwMDkxMDcsImV4cCI6MjA4NTU4NTEwN30.KGPICwFTn-Hvyn24uhhwA8YccG_D87fmPfZqCSZzerE";
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+    <div class="stars"></div>
+    <div class="crt-overlay"></div>
 
+    <div id="app">
+        <!-- Auth Modal -->
+        <div id="auth-modal" class="modal">
+            <div class="modal-content">
+                <h2>IDENTIFY YOURSELF</h2>
+                <p>Enter your ground station callsign (e.g. ALPHA-7)</p>
+                <input type="text" id="codename-input" placeholder="CODENAME...">
+                <button id="auth-submit">INITIALIZE SESSION</button>
+            </div>
+        </div>
+
+        <header>
+            <div class="header-main">
+                <h1 class="glitch-text">VOID_RELAY</h1>
+                <div class="user-info">
+                    ID: <span id="user-codename">GUEST</span>
+                </div>
+            </div>
+            <p class="tagline">Interplanetary Messaging V2.0 // Persistence Active</p>
+        </header>
+
+        <div class="main-grid">
+            <!-- Left: Controls & Missions -->
+            <div class="col-left">
+                <div class="box mission-panel">
+                    <div class="box-header">DAILY_MISSION</div>
+                    <div id="daily-mission-content">
+                        <p id="mission-title">Loading mission...</p>
+                        <div class="progress-bar"><div id="mission-progress"></div></div>
+                        <p id="mission-status">0/0</p>
+                    </div>
+                </div>
+
+                <div class="box terminal">
+                    <div class="box-header">CONSTRUCT_SIGNAL</div>
+                    <div class="controls">
+                        <div class="row">
+                            <label>FROM:</label>
+                            <select id="origin">
+                                <option value="earth">Earth 🌍</option>
+                                <option value="moon">The Moon 🌙</option>
+                                <option value="mars">Mars 🔴</option>
+                            </select>
+                        </div>
+                        <div class="row">
+                            <label>TO:</label>
+                            <select id="destination">
+                                <option value="moon">The Moon 🌙</option>
+                                <option value="earth">Earth 🌍</option>
+                                <option value="mars" selected>Mars 🔴</option>
+                            </select>
+                        </div>
+                        <div class="row">
+                            <textarea id="message" placeholder="Type something cool..."></textarea>
+                        </div>
+                        
+                        <div class="sliders">
+                            <div class="slider-box">
+                                <label>SPEED: <span id="speed-val">1x</span></label>
+                                <input type="range" id="sim-speed" min="1" max="10" value="1">
+                            </div>
+                            <div class="slider-box">
+                                <label>CHAOS: <span id="loss-val">15%</span></label>
+                                <input type="range" id="packet-loss" min="0" max="100" value="15">
+                            </div>
+                        </div>
+
+                        <button id="send-btn">RELA_Y SIGNAL</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Center: Visualizer -->
+            <div class="box viz">
+                <div class="box-header">ORBITAL_VIEW</div>
+                <div class="space-map">
+                    <div class="body earth" title="Earth"></div>
+                    <div class="body moon" title="Moon"></div>
+                    <div class="body mars" title="Mars"></div>
+                    <div id="signal-layer"></div>
+                </div>
+                <div class="achievements-mini" id="achievements-list">
+                    <!-- Achievements pop up here -->
+                </div>
+            </div>
+
+            <!-- Right: Feed & Leaderboard -->
+            <div class="col-right">
+                <div class="box leaderboard">
+                    <div class="box-header">TOP_STATIONS</div>
+                    <div id="leaderboard-list" class="list-content">
+                        <!-- Leaderboard entries -->
+                    </div>
+                </div>
+
+                <div class="box feed">
+                    <div class="box-header">SIGNAL_FEED</div>
+                    <div id="logs" class="log-entries">
+                        <div class="entry sys">System booted. Ready to ping.</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <footer>
+            <p>Built by Atharv (Nubprogramer) · <a href="https://dsc.gg/axoninnova" target="_blank">Axoninnova Community</a></p>
+        </footer>
+    </div>
+
+    <!-- Solar Storm Popup -->
+    <div id="storm-warning" class="hidden">
+        <div class="storm-content">
+            <h2>⚠️ SOLAR STORM DETECTED ⚠️</h2>
+            <p>High radiation! Packet loss is spiked!</p>
+            <button onclick="document.getElementById('storm-warning').classList.add('hidden')">GOT IT</button>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
