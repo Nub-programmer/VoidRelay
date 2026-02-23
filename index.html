@@ -22,10 +22,17 @@
         <!-- Auth Modal -->
         <div id="auth-modal" class="modal">
             <div class="modal-content">
-                <h2>IDENTIFY YOURSELF</h2>
-                <p>Enter your ground station callsign (e.g. ALPHA-7)</p>
-                <input type="text" id="codename-input" placeholder="CODENAME...">
-                <button id="auth-submit">INITIALIZE SESSION</button>
+                <h2 id="modal-title">STATION_UPLINK</h2>
+                <div id="auth-fields">
+                    <input type="text" id="codename-input" placeholder="CODENAME...">
+                    <input type="password" id="password-input" placeholder="PASSWORD...">
+                </div>
+                <div class="modal-btns">
+                    <button id="auth-login">LOGIN</button>
+                    <button id="auth-signup">SIGNUP</button>
+                </div>
+                <button id="auth-guest" style="background: #333; margin-top: 10px; font-size: 1rem;">CONTINUE AS GUEST</button>
+                <p id="auth-error" style="color: var(--accent); font-size: 0.8rem; margin-top: 10px;"></p>
             </div>
         </div>
 
@@ -34,6 +41,7 @@
                 <h1 class="glitch-text">VOID_RELAY</h1>
                 <div class="user-info">
                     ID: <span id="user-codename">GUEST</span>
+                    <button id="logout-btn" class="hidden" style="font-size: 0.8rem; padding: 2px 5px; margin-left: 10px;">LOGOUT</button>
                 </div>
             </div>
             <p class="tagline">Interplanetary Messaging V2.0 // Persistence Active</p>
