@@ -1,5 +1,5 @@
 # VoidRelay
-
+[hosted on vercel btw](https://voidrelay.vercel.app)
 A retro-styled space communication simulator where you relay signals between planets while dealing with solar storms, interference, and the cold reality of deep space physics.
 
 ## What It Does
