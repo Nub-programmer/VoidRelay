@@ -309,11 +309,12 @@ function setupStaticUI() {
 }
 
 async function logEvent(event, message, meta) {
+    // Add this event to our local log array for telemetry replay
     const entry = { ...meta, event, message, timestamp: new Date().toISOString() };
-    recentLogs.unshift(entry);
-    if (recentLogs.length > 30) recentLogs.pop();
+    recentLogs.unshift(entry);  // Add to front of array
+    if (recentLogs.length > 30) recentLogs.pop();  // Keep only last 30 entries
     
-    // Only log to database if user is logged in
+    // If we're logged in and DB is available, save this to the cloud too
     if (!sb || !user || user.is_anonymous) return;
     
     try {
@@ -346,6 +347,7 @@ async function checkAchievements(target) {
 // ============================================================================
 
 function setupStaticUI() {
+    // This function sets up all the UI elements - stars, theme, buttons, the whole vibe
     const stars = document.getElementById('stars-container');
     if (stars) {
         for (let i = 0; i < 100; i++) {
@@ -562,7 +564,7 @@ async function loadLeaderboard() {
     if (!container) return;
     container.innerHTML = "";
 
-    // Fallback if sb not initialized
+    // Make sure we actually have a database connection before trying to fetch
     if (!sb) {
         console.warn("[leaderboard] Supabase not initialized");
         container.innerHTML = "<div>Database unavailable (offline mode).</div>";
@@ -570,7 +572,7 @@ async function loadLeaderboard() {
     }
 
     try {
-        // Fetch ALL rows (no limit at DB level)
+        // Grab everyone from the leaderboard - no limit here, we fetch em all
         const { data, error } = await sb
             .from("leaderboard")
             .select("user_id, codename, mars_pings")
@@ -586,7 +588,7 @@ async function loadLeaderboard() {
             return;
         }
 
-        // Show only top 5 on main page
+        // Only show top 5 on the main page to keep it clean
         const topFive = data.slice(0, 5);
         
         topFive.forEach((row, index) => {
@@ -594,12 +596,12 @@ async function loadLeaderboard() {
             div.className = 'entry';
             div.innerHTML = `
                 <span>#${index+1} ${row.codename || (row.user_id ? row.user_id.substring(0,6) : 'STATION')}</span>
-                <span style="float:right">${row.mars_pings} PINGS</span>
+                <span style="float:right">${row.mars_pings} UPLINKS</span>
             `;
             container.appendChild(div);
         });
 
-        // Add view full leaderboard button if more than 5 users
+        // If we got more than 5 people, add a button to see the full rankings
         if (data.length > 5) {
             const btnDiv = document.createElement("div");
             btnDiv.style.marginTop = "1rem";
@@ -629,20 +631,23 @@ async function loadLeaderboard() {
 }
 
 async function updateLeaderboard(pings) {
+    // Skip if user isn't logged in properly
     if (!user || user.is_anonymous) return;
     if (!sb) {
         console.warn("[leaderboard] Supabase not available");
         return;
     }
 
+    // Build the payload with current stats
     const payload = {
         user_id: user.id,
         codename: codename,
-        mars_pings: pings,
-        storms_survived: 0
+        mars_pings: pings,  // This tracks total successful transmissions now
+        storms_survived: 0   // Placeholder for future storm counter
     };
 
     try {
+        // Upsert = update if exists, insert if new. No duplicate entries this way
         const { error } = await sb
             .from("leaderboard")
             .upsert(payload, { onConflict: "user_id" });
@@ -653,7 +658,8 @@ async function updateLeaderboard(pings) {
             return;
         }
 
-        console.log("[leaderboard] Updated:", codename, "→", pings, "pings");
+        console.log("[leaderboard] Updated:", codename, "→", pings, "uplinks");
+        // Refresh the display so we see the new rankings immediately
         await loadLeaderboard();
     } catch (err) {
         console.error("[leaderboard] exception:", err);
@@ -662,18 +668,19 @@ async function updateLeaderboard(pings) {
 }
 
 async function transmit(from, to, msg, strategy) {
+    // Yo so basically this function handles sending a signal between planets
     console.log('[transmit] Called with:', { from, to, msg, strategy });
     const sendBtn = document.getElementById('send-btn');
-    if (sendBtn?.disabled) return;
+    if (sendBtn?.disabled) return;  // Don't let people spam-click it
     if (sendBtn) sendBtn.disabled = true;
     
     const speed = parseFloat(document.getElementById('sim-speed')?.value || 1);
     const startPos = { ...PLANET_DATA[from].pos };
     const endPos = { ...PLANET_DATA[to].pos };
     const dist = Math.hypot(startPos.x - endPos.x, startPos.y - endPos.y);
-    const duration = (dist * 200) / speed;
+    const duration = (dist * 200) / speed;  // Travel time scales with distance
     
-    // Signal state object
+    // Build the signal state object - this tracks everything about this transmission
     const signalState = {
         id: Date.now(),
         from: from,
@@ -681,7 +688,7 @@ async function transmit(from, to, msg, strategy) {
         strategy: strategy,
         timestamp: new Date().toISOString(),
         coords: { start: startPos, end: endPos },
-        resolved: false, // Critical flag to prevent double resolution
+        resolved: false, // Super important - prevents double-counting
         state: 'launched'
     };
     
@@ -690,7 +697,7 @@ async function transmit(from, to, msg, strategy) {
     
     const targetPlanet = document.querySelector(`.body.${to}`);
     
-    // Pre-flight check: Solar blackout blocks non-emergency signals instantly
+    // Pre-flight check: if the target planet is in blackout and you're not using emergency mode, just block it immediately
     if (PLANET_STATES[to] === 'blackout' && strategy !== 'EMERGENCY') {
         console.log('[signal] Blocked by solar blackout');
         resolveSignal(null, targetPlanet, signalState, 'failed', 'solar_blackout');
@@ -728,7 +735,7 @@ async function transmit(from, to, msg, strategy) {
         pkt.style.left = `${px}%`;
         pkt.style.top = `${py}%`;
         
-        // Collision detection: Asteroids
+        // Collision detection: Check if we hit any asteroids - if so, signal is dead
         for (const a of asteroids) {
             if (Math.hypot(a.x - px, a.y - py) < 2.0) {
                 console.log('[signal] Asteroid collision detected');
@@ -737,28 +744,29 @@ async function transmit(from, to, msg, strategy) {
             }
         }
         
-        // Capture detection: Within 80% of planet radius = auto-lock
+        // Capture detection: If the signal gets within 80% of the planet's radius, it auto-locks
+        // Think of it like a magnetic capture zone - once you're in, you're in
         if (checkSignalCapture(pkt, targetPlanet)) {
             console.log('[signal] Capture detected - magnetic lock');
             signalState.state = 'captured';
             
-            // Smooth magnetic snap animation
+            // Smooth animation as the signal snaps to the planet
             pkt.style.transition = 'all 0.2s ease-out';
             pkt.style.left = targetPlanet.style.left;
             pkt.style.top = targetPlanet.style.top;
             
-            // Allow snap animation to complete before resolving
+            // Let the snap animation finish before we resolve the outcome
             setTimeout(() => {
                 resolveSignal(pkt, targetPlanet, signalState, 'success', null);
             }, 200);
             return;
         }
         
-        // Continue animation or resolve as miss
+        // Keep the animation going, or if we've reached the end and missed, that's an L
         if (progress < 1) {
             requestAnimationFrame(animate);
         } else {
-            // Animation complete but never captured = trajectory miss
+            // Animation completed but never got captured = we missed the planet entirely
             console.log('[signal] Animation complete without capture - trajectory miss');
             resolveSignal(pkt, targetPlanet, signalState, 'failed', 'trajectory_miss');
         }
@@ -817,50 +825,51 @@ async function resolveSignal(pkt, targetPlanet, signalState, outcome, failureRea
     
     lossRate = Math.max(0, Math.min(lossRate, 100));
     
+    // Alright here's where we figure out if the signal actually made it or got cooked
     let finalOutcome = outcome;
     let finalReason = failureReason;
     
-    // Determine final outcome if not already failed
+    // Run some checks if we got a "success" from capture
     if (outcome === 'success') {
-        // Additional failure checks for "captured" signals
+        // Blackout + no emergency? Yeah that's not gonna work chief
         if (PLANET_STATES[signalState.to] === 'blackout' && signalState.strategy !== 'EMERGENCY') {
             finalOutcome = 'failed';
             finalReason = 'solar_blackout';
         } else if (PLANET_STATES[signalState.to] === 'blackout' && signalState.strategy === 'EMERGENCY') {
-            // Emergency strategy has higher failure rate in blackout
+            // Emergency gives you a shot but it's still pretty rough in blackout
             if (Math.random() * 100 < Math.min(lossRate + 50, 98)) {
                 finalOutcome = 'failed';
                 finalReason = 'radiation_interference';
             }
         } else if (Math.random() * 100 < lossRate) {
+            // Regular packet loss check - storms make this way worse
             finalOutcome = 'failed';
             finalReason = isStorming ? 'radiation_interference' : 'signal_decay';
         }
     }
     
-    // Log outcome
+    // Time to log what happened and update everything
     if (finalOutcome === 'success') {
         console.log('[signal] ✓ UPLINK CONFIRMED — TRANSMISSION RECEIVED');
         addLog('UPLINK CONFIRMED — TRANSMISSION RECEIVED', 'success');
         showToast('UPLINK CONFIRMED', 'success');
         
+        // Bump up the session success counter
         sessionStats.successful++;
         
-        // Update stats
-        if (signalState.to === 'mars') {
-            stats.marsPings++;
-            
-            // Update leaderboard for logged-in users
-            if (user && !user.is_anonymous) {
-                await updateLeaderboard(stats.marsPings);
-                await checkAchievements(signalState.to);
-            }
+        // Update the global ping counter for leaderboard tracking
+        stats.marsPings++;
+        
+        // Push to leaderboard if user is logged in (not guest mode)
+        if (user && !user.is_anonymous) {
+            await updateLeaderboard(stats.marsPings);
         }
         
-        // Log successful transmission
+        // Log this W to the database
         await logEvent('success', 'Uplink confirmed', signalState);
         
     } else {
+        // Signal got cooked somewhere along the way, log the L
         const reasonText = finalReason.toUpperCase().replace(/_/g, ' ');
         console.log(`[signal] ✗ SIGNAL LOST — REASON: ${reasonText}`);
         addLog(`SIGNAL LOST — REASON: ${reasonText}`, 'error');
@@ -868,7 +877,7 @@ async function resolveSignal(pkt, targetPlanet, signalState, outcome, failureRea
         
         sessionStats.failed++;
         
-        // Log failure with reason
+        // Log the failure with details so we can review it later
         await logEvent('drop', `Signal lost: ${reasonText}`, signalState);
     }
     
