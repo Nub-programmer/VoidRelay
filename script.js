@@ -46,10 +46,11 @@ const PLANET_DATA = {
 
 const PLANET_STATES = { earth: 'nominal', moon: 'nominal', mars: 'nominal' };
 
-// App state (managed cleanly)
+// Session state
 let user = null;
 let codename = localStorage.getItem('void_relay_codename') || 'GUEST';
 let stats = { marsPings: 0 };
+let sessionStats = { successful: 0, failed: 0 };
 let isStorming = false;
 let isInitialized = false;
 let emergencyTokens = parseInt(localStorage.getItem('emergency_tokens')) || 2;
@@ -57,16 +58,9 @@ let currentStrategy = 'NORMAL';
 let recentLogs = [];
 let selectedReplayIndex = -1;
 
-// Environment state
+// Live hazards
 const asteroids = [];
 const activeStorms = new Set();
-
-// Guest mode achievement preview
-const localPreviewAchievements = [
-    { name: 'First Contact', description: 'Relay your first signal.', unlocked: true },
-    { name: 'Mars Explorer', description: 'Reach the red planet.', unlocked: false },
-    { name: 'Storm Survivor', description: 'Communicate during a storm.', unlocked: false }
-];
 
 // ============================================================================
 // SECTION 2: AUTH & USER MANAGEMENT
@@ -116,29 +110,22 @@ async function initApp() {
 }
 
 function resetUIState() {
-    console.log('[ui] Resetting state for new user session');
+    console.log('[ui] Resetting state for new session');
     
-    // Clear achievements
-    const alist = document.getElementById('achievements-list');
-    if (alist) alist.innerHTML = '';
-    
-    // Clear leaderboard
     const lblist = document.getElementById('leaderboard-list');
     if (lblist) lblist.innerHTML = '';
     
-    // Clear logs
     const logContainer = document.getElementById('logs');
     if (logContainer) logContainer.innerHTML = '<div class="entry sys">Boot sequence complete.</div>';
     
-    // Reset stats
     stats = { marsPings: 0 };
     recentLogs = [];
 }
 
 async function initDataForUser() {
-    console.log('[init] Loading data for user:', user?.id || 'guest');
+    console.log('[init] Loading data for:', user?.id || 'guest');
     
-    // Load codename
+    // Fetch codename from profile if logged in
     if (user && !user.is_anonymous && sb) {
         try {
             const { data: profile, error} = await sb
@@ -157,14 +144,9 @@ async function initDataForUser() {
         codename = localStorage.getItem('void_relay_codename') || 'GUEST';
     }
     
-    // Update UI state
     updateUIState();
-    
-    // Load achievements and leaderboard
-    await Promise.all([
-        loadAchievements(),
-        loadLeaderboard()
-    ]);
+    await loadLeaderboard();
+    updateIntelligenceConsole();
 }
 
 async function handleAuth(mode) {
@@ -247,72 +229,158 @@ function updateUIState() {
     updateLatencyEstimate();
 }
 
-// ============================================================================
-// SECTION 3: DATABASE OPERATIONS
-// ============================================================================
+// ---------------- DATABASE ----------------
 
-async function loadAchievements() {
-    const container = document.getElementById('achievements-list');
+async function loadLeaderboard() {
+    const container = document.getElementById('leaderboard-list');
     if (!container) return;
     
     container.innerHTML = '';
-    console.log('[achievements] Loading for user:', user?.id || 'guest');
+    console.log('[leaderboard] Loading fresh data');
     
-    // Guest mode: show preview
-    if (!user || user.is_anonymous || !sb) {
-        console.log('[achievements] Guest mode - showing preview');
-        renderAchievements(localPreviewAchievements);
+    if (!sb) {
+        console.log('[leaderboard] Offline mode');
+        container.innerHTML = '<div class="entry" style="opacity: 0.6;">Offline mode.</div>';
         return;
     }
     
-    // Logged in: fetch from database
     try {
         const { data, error } = await sb
-            .from('user_achievements')
-            .select('unlocked_at, achievements(name, description)')
-            .eq('user_id', user.id);
+            .from('leaderboards')
+            .select('user_id, codename, mars_pings')
+            .order('mars_pings', { ascending: false })
+            .limit(10);
         
         if (error) throw error;
         
+        console.log('[leaderboard] Fetched rows:', data);
+        
         if (!data || data.length === 0) {
-            console.log('[achievements] No achievements unlocked yet');
-            container.innerHTML = '<div style="padding: 10px; opacity: 0.6;">No achievements unlocked yet.</div>';
+            console.log('[leaderboard] No entries found (possible RLS issue if records exist)');
+            container.innerHTML = '<div class="entry" style="opacity: 0.6;">No operators yet.</div>';
             return;
         }
         
-        console.log('[achievements] Loaded', data.length, 'achievements');
-        const achievements = data.map(d => ({
-            name: d.achievements.name,
-            description: d.achievements.description,
-            unlocked: true,
-            date: d.unlocked_at
-        }));
+        console.log('[leaderboard] Rendering', data.length, 'entries');
         
-        renderAchievements(achievements);
+        // Render each leaderboard entry
+        data.forEach((row, index) => {
+            const div = document.createElement('div');
+            div.className = 'entry';
+            
+            const displayName = row.codename || (row.user_id ? `USER_${row.user_id.substring(0, 6)}` : 'STATION');
+            
+            div.innerHTML = `
+                <span>#${index + 1} ${displayName}</span>
+                <span style="float:right">${row.mars_pings} PINGS</span>
+            `;
+            container.appendChild(div);
+        });
         
     } catch (err) {
-        console.error('[achievements] Fetch error:', err);
-        container.innerHTML = '<div style="padding: 10px; opacity: 0.6;">Offline mode.</div>';
+        console.error('[leaderboard] Fetch error:', err);
+        container.innerHTML = '<div class="entry" style="color: var(--accent);">Leaderboard unavailable.</div>';
     }
 }
 
-function renderAchievements(items) {
-    const list = document.getElementById('achievements-list');
-    if (!list) return;
+async function updateLeaderboard(score) {
+    if (!user || user.is_anonymous || !sb) {
+        console.log('[leaderboard] Guest mode - skipping update');
+        return;
+    }
     
-    list.innerHTML = items.map(a => `
-        <div class="achievement-badge ${a.unlocked ? '' : 'locked'}">
-            <span class="icon">${a.unlocked ? '🏆' : '🔒'}</span>
-            <div>
-                <div class="name">${a.name}</div>
-                <div class="desc" style="font-size: 0.7rem; opacity: 0.7;">${a.description}</div>
-            </div>
-            ${a.date ? `<span class="date">${new Date(a.date).toLocaleDateString()}</span>` : ''}
-        </div>
-    `).join('');
+    console.log('[leaderboard] Updating score:', score, 'for user:', user.id);
+    
+    const payload = {
+        user_id: user.id,
+        codename: codename,
+        mars_pings: score,
+        updated_at: new Date().toISOString()
+    };
+    
+    try {
+        // Upsert ensures each user has only one entry
+        const { error } = await sb
+            .from('leaderboards')
+            .upsert(payload, { onConflict: 'user_id' });
+        
+        if (error) throw error;
+        
+        console.log('[leaderboard] Update complete, reloading...');
+        
+        // Always reload to show fresh data
+        await loadLeaderboard();
+        
+    } catch (err) {
+        console.error('[leaderboard] Upsert error:', err);
+        addLog('Leaderboard sync failed', 'error');
+    }
 }
 
-async function loadLeaderboard() {
+async function logEvent(event, message, meta) {
+    const entry = { ...meta, event, message, timestamp: new Date().toISOString() };
+    recentLogs.unshift(entry);
+    if (recentLogs.length > 30) recentLogs.pop();
+    
+    // Only persist to database if logged in
+    if (!sb || !user || user.is_anonymous) return;
+    
+    try {
+        await sb.from('mission_logs').insert([{
+            user_id: user.id,
+            codename: codename,
+            event: event,
+            message: message,
+            from_planet: meta.from,
+            to_planet: meta.to,
+            strategy: meta.strategy
+        }]);
+    } catch (e) {
+        console.error('[database] Mission log error:', e);
+    }
+}
+
+async function checkAchievements(target) {
+    if (!user || user.is_anonymous) return;
+    
+    // Simple achievement check for first Mars ping
+    if (target === 'mars' && stats.marsPings === 1) {
+        console.log('[achievements] First Mars ping milestone');
+    }
+}
+
+function updateIntelligenceConsole() {
+    const successEl = document.getElementById('intel-success');
+    const failedEl = document.getElementById('intel-failed');
+    const stabilityEl = document.getElementById('intel-stability');
+    const hazardEl = document.getElementById('intel-hazard');
+    const difficultyEl = document.getElementById('intel-difficulty');
+    
+    if (successEl) successEl.innerText = sessionStats.successful;
+    if (failedEl) failedEl.innerText = sessionStats.failed;
+    
+    // Calculate stability percentage
+    const total = sessionStats.successful + sessionStats.failed;
+    const stability = total === 0 ? 100 : Math.round((sessionStats.successful / total) * 100);
+    if (stabilityEl) stabilityEl.innerText = `${stability}%`;
+    
+    // Show current hazard status
+    let hazardStatus = 'CLEAR';
+    if (isStorming) hazardStatus = 'STORM';
+    else if (Object.values(PLANET_STATES).some(s => s === 'blackout')) hazardStatus = 'BLACKOUT';
+    else if (Object.values(PLANET_STATES).some(s => s === 'interference')) hazardStatus = 'INTERFERENCE';
+    if (hazardEl) hazardEl.innerText = hazardStatus;
+    
+    // Show difficulty based on current conditions
+    let difficulty = 'STANDARD';
+    if (isStorming && Object.values(PLANET_STATES).some(s => s === 'blackout')) difficulty = 'EXTREME';
+    else if (isStorming || Object.values(PLANET_STATES).some(s => s === 'blackout')) difficulty = 'HIGH';
+    if (difficultyEl) difficultyEl.innerText = difficulty;
+}
+
+// ---------------- UI ----------------
+
+async function setupStaticUI() {
     const container = document.getElementById('leaderboard-list');
     if (!container) return;
     
@@ -808,6 +876,8 @@ async function resolveSignal(pkt, targetPlanet, signalState, outcome, failureRea
         addLog('UPLINK CONFIRMED — TRANSMISSION RECEIVED', 'success');
         showToast('UPLINK CONFIRMED', 'success');
         
+        sessionStats.successful++;
+        
         // Update stats
         if (signalState.to === 'mars') {
             stats.marsPings++;
@@ -828,9 +898,13 @@ async function resolveSignal(pkt, targetPlanet, signalState, outcome, failureRea
         addLog(`SIGNAL LOST — REASON: ${reasonText}`, 'error');
         showToast('SIGNAL LOST', 'error');
         
+        sessionStats.failed++;
+        
         // Log failure with reason
         await logEvent('drop', `Signal lost: ${reasonText}`, signalState);
     }
+    
+    updateIntelligenceConsole();
 }
 
 // ============================================================================
