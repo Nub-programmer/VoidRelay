@@ -1,4 +1,5 @@
-// 🚀 VoidRelay Core Logic // Stabilization & Realism Build
+// VoidRelay - deep space comms simulator with actual physics n stuff
+// Supabase setup - this connects us to the database for auth and leaderboard
 const supabaseUrl = window.VOID_SB_URL;
 const supabaseKey = window.VOID_SB_KEY;
 
@@ -6,7 +7,7 @@ let sb;
 if (supabaseKey && supabaseUrl) {
     sb = window.supabase.createClient(supabaseUrl, supabaseKey);
 } else {
-    console.error("❌ Supabase config missing.");
+    console.error("Yo database config is missing, check your keys");
 }
 
 // How fast planets orbit - tweak this if you want things to move faster/slower
@@ -53,23 +54,23 @@ let unlockedCache = new Set();
 const asteroids = [];
 const activeStorms = new Set();
 
-// ╔══════════════════════════════════════════════════════════════════════════╗
-// ║  APP INITIALIZATION - Where everything starts up                         ║
-// ╚══════════════════════════════════════════════════════════════════════════╝
+// ========================================================
+// APP INITIALIZATION - where everything starts
+// ========================================================
 
 async function initApp() {
-    console.log('[init] starting...');
+    console.log('Starting up the simulation...');
     if (!sb) return;
 
-    // Single Auth Listener
+    // Listen for auth changes so we know when someone logs in/out
     sb.auth.onAuthStateChange((event, session) => {
-        console.log('[auth] state change:', event);
+        console.log('Auth event happened:', event);
         user = session?.user || null;
         resetUIState();
         initDataForUser();
     });
 
-    // Initial session check
+    // Check if someone's already logged in from before
     const { data: { session } } = await sb.auth.getSession();
     user = session?.user || null;
 
@@ -79,15 +80,15 @@ async function initApp() {
     isInitialized = true;
     requestAnimationFrame(mainLoop);
     
-    // Environment loops
-    setInterval(cycleAmbientInterference, 20000);
-    setInterval(() => { if (Math.random() < 0.4) spawnAsteroid(); }, 30000);
-    scheduleStorm();
-    scheduleFlare();
+    // Background tasks that keep the simulation interesting
+    setInterval(cycleAmbientInterference, 20000);  // Planet states change every 20s
+    setInterval(() => { if (Math.random() < 0.4) spawnAsteroid(); }, 30000);  // Random asteroids
+    scheduleStorm();  // Solar storms on a timer
+    scheduleFlare();  // Solar flares too
 }
 
 function resetUIState() {
-    console.log('[ui] resetting state');
+    console.log('Clearing the UI and resetting everything');
     const lblist = document.getElementById('leaderboard-list');
     if (lblist) lblist.innerHTML = '';
     recentLogs = [];
@@ -96,14 +97,15 @@ function resetUIState() {
 }
 
 async function initDataForUser() {
-    console.log('[init] loading data for user:', user?.id || 'guest');
+    console.log('Loading user data for:', user?.id || 'guest');
     if (user && !user.is_anonymous) {
         try {
+            // Try to get their codename from the profiles table
             const { data: profile, error } = await sb.from('profiles').select('codename').eq('id', user.id).maybeSingle();
             if (error) throw error;
             codename = profile ? profile.codename : 'OPERATOR';
         } catch (e) {
-            console.error('[init] profile error:', e);
+            console.error('Profile fetch failed:', e);
             codename = 'OPERATOR';
         }
     } else {
@@ -132,6 +134,7 @@ async function handleAuth(mode) {
         return;
     }
     
+    // We use fake email format since Supabase needs emails but we just want usernames
     const email = `${username}@voidrelay.local`;
     
     try {
@@ -139,6 +142,7 @@ async function handleAuth(mode) {
         if (mode === 'login') {
             result = await sb.auth.signInWithPassword({ email, password });
         } else {
+            // Signup flow - create the user and their profile
             result = await sb.auth.signUp({ email, password });
             if (result.data.user) {
                 await sb.from('profiles').insert([{ id: result.data.user.id, codename: username }]);
@@ -150,13 +154,13 @@ async function handleAuth(mode) {
         codename = username;
         localStorage.setItem('void_relay_codename', username);
         
-        // Clear inputs and error
+        // Clean up the form
         if (usernameInput) usernameInput.value = '';
         if (passwordInput) passwordInput.value = '';
         if (errorDisplay) errorDisplay.innerText = '';
         
     } catch (err) {
-        console.error('[auth] Error:', err);
+        console.error('Auth error:', err);
         if (errorDisplay) errorDisplay.innerText = err.message || 'Auth failed';
     }
 }
@@ -204,9 +208,9 @@ function updateIntelligenceConsole() {
     if (difficultyEl) difficultyEl.innerText = difficulty;
 }
 
-// ╔══════════════════════════════════════════════════════════════════════════╗
-// ║  UI SETUP - Button handlers, event listeners, all the interactive stuff  ║
-// ╚══════════════════════════════════════════════════════════════════════════╝
+// ========================================================
+// UI SETUP - buttons, listeners, all the interactive bits
+// ========================================================
 
 function setupStaticUI() {
     const stars = document.getElementById('stars-container');
@@ -309,12 +313,12 @@ function setupStaticUI() {
 }
 
 async function logEvent(event, message, meta) {
-    // Add this event to our local log array for telemetry replay
+    // Save this transmission to local history for the telemetry viewer
     const entry = { ...meta, event, message, timestamp: new Date().toISOString() };
-    recentLogs.unshift(entry);  // Add to front of array
-    if (recentLogs.length > 30) recentLogs.pop();  // Keep only last 30 entries
+    recentLogs.unshift(entry);
+    if (recentLogs.length > 30) recentLogs.pop();
     
-    // If we're logged in and DB is available, save this to the cloud too
+    // Also save to database if we're logged in (not guest mode)
     if (!sb || !user || user.is_anonymous) return;
     
     try {
@@ -328,7 +332,7 @@ async function logEvent(event, message, meta) {
             strategy: meta.strategy
         }]);
     } catch (e) {
-        console.error('[database] Mission log insert error:', e);
+        console.error('Failed to save mission log:', e);
     }
 }
 
@@ -342,9 +346,9 @@ async function checkAchievements(target) {
     }
 }
 
-// ╔══════════════════════════════════════════════════════════════════════════╗
-// ║  ENVIRONMENT & HAZARDS - Storms, flares, asteroids, planet states        ║
-// ╚══════════════════════════════════════════════════════════════════════════╝
+// ========================================================
+// ENVIRONMENT & HAZARDS - storms, flares, asteroids
+// ========================================================
 
 function spawnSolarStorm() {
     const radius = 150;
@@ -356,7 +360,7 @@ function spawnSolarStorm() {
     document.getElementById('solar-storm-layer')?.appendChild(el);
     const stormObj = { x: rx, y: ry, r: radius / 2, el };
     activeStorms.add(stormObj); isStorming = true;
-    document.getElementById('viz-container')?.classList.add('shake');
+    document.getElementById('viz-container')?.classList.add('shake');  // Screen shake effect
     addLog("SOLAR STORM DETECTED", "error");
     updateIntelligenceConsole();
     setTimeout(() => {
@@ -377,9 +381,11 @@ function scheduleStorm() {
 function triggerFlareBurst() {
     addLog("SOLAR FLARE BURST", "error");
     const oldStates = { ...PLANET_STATES };
+    // Flare hits all planets at once with interference
     Object.keys(PLANET_STATES).forEach(k => PLANET_STATES[k] = 'interference');
     updatePlanetVisuals();
     updateIntelligenceConsole();
+    // Flare only lasts a few seconds then go back to normal states
     setTimeout(() => {
         Object.keys(PLANET_STATES).forEach(k => PLANET_STATES[k] = oldStates[k]);
         updatePlanetVisuals();
@@ -463,22 +469,22 @@ async function loadLeaderboard() {
     if (!container) return;
     container.innerHTML = "";
 
-    // Make sure we actually have a database connection before trying to fetch
+    // Make sure database is actually connected
     if (!sb) {
-        console.warn("[leaderboard] Supabase not initialized");
+        console.warn("Database not initialized, showing offline mode");
         container.innerHTML = "<div>Database unavailable (offline mode).</div>";
         return;
     }
 
     try {
-        // Grab everyone from the leaderboard - no limit here, we fetch em all
+        // Fetch ALL users from the leaderboard table, sorted by uplinks
         const { data, error } = await sb
             .from("leaderboard")
             .select("user_id, codename, mars_pings")
             .order("mars_pings", { ascending: false });
 
         if (error) {
-            console.error("[leaderboard] query error:", error);
+            console.error("Leaderboard query failed:", error);
             throw error;
         }
 
@@ -487,7 +493,7 @@ async function loadLeaderboard() {
             return;
         }
 
-        // Only show top 5 on the main page to keep it clean
+        // Only show top 5 on main page to keep it clean
         const topFive = data.slice(0, 5);
         
         topFive.forEach((row, index) => {
@@ -500,22 +506,18 @@ async function loadLeaderboard() {
             container.appendChild(div);
         });
 
-        // If we got more than 5 people, add a button to see the full rankings
+        // If there's more than 5 people, add a link to see everyone
         if (data.length > 5) {
             const btnDiv = document.createElement("div");
-            btnDiv.style.marginTop = "1rem";
+            btnDiv.style.marginTop = "0.8rem";
             btnDiv.style.textAlign = "center";
             const btn = document.createElement("button");
             btn.id = "view-full-leaderboard";
-            btn.innerText = "View Full Leaderboard";
+            btn.className = "btn-pill";
+            btn.innerText = "➡️ See Full Rankings";
             btn.style.padding = "0.5rem 1rem";
             btn.style.cursor = "pointer";
-            btn.style.background = "var(--bg)";
-            btn.style.color = "var(--accent)";
-            btn.style.border = "2px solid var(--accent)";
-            btn.style.fontFamily = "'VT323', monospace";
-            btn.style.fontSize = "0.9rem";
-            btn.style.textTransform = "uppercase";
+            btn.style.width = "100%";
             btn.onclick = () => {
                 window.location.href = "leaderboard.html";
             };
@@ -524,44 +526,44 @@ async function loadLeaderboard() {
         }
 
     } catch (err) {
-        console.error("[leaderboard] error:", err);
+        console.error("Leaderboard error:", err);
         container.innerHTML = `<div>Leaderboard unavailable: ${err.message || 'Unknown error'}</div>`;
     }
 }
 
 async function updateLeaderboard(pings) {
-    // Skip if user isn't logged in properly
+    // Don't update for guests or if not logged in
     if (!user || user.is_anonymous) return;
     if (!sb) {
-        console.warn("[leaderboard] Supabase not available");
+        console.warn("Database not available, can't sync leaderboard");
         return;
     }
 
-    // Build the payload with current stats
+    // Prep the data to send
     const payload = {
         user_id: user.id,
         codename: codename,
-        mars_pings: pings,  // This tracks total successful transmissions now
-        storms_survived: 0   // Placeholder for future storm counter
+        mars_pings: pings,  // Total successful uplinks
+        storms_survived: 0   // Future feature maybe
     };
 
     try {
-        // Upsert = update if exists, insert if new. No duplicate entries this way
+        // Upsert = update if user exists, insert if new
         const { error } = await sb
             .from("leaderboard")
             .upsert(payload, { onConflict: "user_id" });
 
         if (error) {
-            console.error("[leaderboard] upsert error:", error);
+            console.error("Leaderboard upsert failed:", error);
             addLog("Leaderboard sync failed", "error");
             return;
         }
 
-        console.log("[leaderboard] Updated:", codename, "→", pings, "uplinks");
-        // Refresh the display so we see the new rankings immediately
+        console.log("Leaderboard updated:", codename, "→", pings, "uplinks");
+        // Refresh the display to show new rankings
         await loadLeaderboard();
     } catch (err) {
-        console.error("[leaderboard] exception:", err);
+        console.error("Leaderboard error:", err);
         addLog("Leaderboard sync unavailable", "error");
     }
 }
@@ -783,9 +785,9 @@ async function resolveSignal(pkt, targetPlanet, signalState, outcome, failureRea
     updateIntelligenceConsole();
 }
 
-// ╔══════════════════════════════════════════════════════════════════════════╗
-// ║  HELPER FUNCTIONS - Toasts, logs, telemetry stuff                       ║
-// ╚══════════════════════════════════════════════════════════════════════════╝
+// ========================================================
+// HELPER FUNCTIONS - toasts, logs, telemetry stuff
+// ========================================================
 
 function showToast(msg, type) {
     const a = document.getElementById('toast-area'), t = document.createElement('div');

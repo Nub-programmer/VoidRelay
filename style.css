@@ -275,6 +275,10 @@ textarea { height: 60px; resize: none; }
 .entry.success { border-color: #0f0; color: #0f0; }
 .entry.error { border-color: #f05; color: #f05; }
 
+/* Leaderboard needs to scroll so it doesn't block the signal feed */
+.list-content { padding: 10px; overflow-y: auto; max-height: 300px; font-size: 0.9rem; }
+.list-content .entry { margin-bottom: 8px; padding: 8px; background: rgba(0, 255, 120, 0.05); border-left: 2px solid var(--accent); }
+
 footer { text-align: center; font-size: 0.8rem; opacity: 0.6; padding: 5px; }
 
 @media (max-width: 1000px) { .main-grid { grid-template-columns: 1fr; } body { overflow-y: auto; } }

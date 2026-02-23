@@ -144,10 +144,10 @@
         
         async function initLeaderboard() {
             try {
-                // Initialize Supabase
+                // Connect to the database
                 sb = window.supabase.createClient(window.VOID_SB_URL, window.VOID_SB_KEY);
                 
-                // Fetch all leaderboard rows
+                // Grab everyone from the leaderboard, sorted by most successful transmissions
                 const { data, error } = await sb
                     .from("leaderboard")
                     .select("user_id, codename, mars_pings")
@@ -166,7 +166,7 @@
                     return;
                 }
                 
-                // Render full list
+                // Show everyone who's ever sent a transmission
                 listEl.innerHTML = '';
                 data.forEach((row, index) => {
                     const div = document.createElement("div");
@@ -184,7 +184,7 @@
                 listEl.style.display = 'block';
                 
             } catch (err) {
-                console.error("[leaderboard] Error loading full rankings:", err);
+                console.error("Failed to load leaderboard:", err);
                 document.getElementById('loading').style.display = 'none';
                 const errorEl = document.getElementById('error');
                 errorEl.innerHTML = `LEADERBOARD ERROR: ${err.message || 'Unable to load rankings'}`;
@@ -192,7 +192,7 @@
             }
         }
         
-        // Generate starfield
+        // Make it look cool with stars everywhere
         function generateStars() {
             const container = document.getElementById('stars-container');
             for (let i = 0; i < 100; i++) {
@@ -211,7 +211,7 @@
             }
         }
         
-        // Initialize on load
+        // Start everything when the page loads
         document.addEventListener('DOMContentLoaded', () => {
             generateStars();
             initLeaderboard();
