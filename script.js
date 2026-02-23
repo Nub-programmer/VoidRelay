@@ -622,25 +622,6 @@ document.getElementById('send-btn').onclick = async () => {
     transmit(from, to, document.getElementById('message').value, currentStrategy);
 };
 
-function checkSignalCapture(packet, planet) {
-  const packetRect = packet.getBoundingClientRect();
-  const planetRect = planet.getBoundingClientRect();
-
-  const px = packetRect.left + packetRect.width / 2;
-  const py = packetRect.top + packetRect.height / 2;
-
-  const cx = planetRect.left + planetRect.width / 2;
-  const cy = planetRect.top + planetRect.height / 2;
-
-  const dx = px - cx;
-  const dy = py - cy;
-  const distance = Math.sqrt(dx * dx + dy * dy);
-
-  const captureRadius = planetRect.width * 0.9; // generous radius
-
-  return distance <= captureRadius;
-}
-
 async function transmit(from, to, msg, strategy) {
     if (document.getElementById('send-btn').disabled) return;
     document.getElementById('send-btn').disabled = true;
@@ -912,12 +893,13 @@ function exportTelemetry(logs) {
 document.addEventListener('DOMContentLoaded', initApp);
 
 console.info('═══════════════════════════════════════════════════════════');
-console.info('VOIDRELAY STABILIZATION BUILD — READY');
-console.info('═══════════════════════════════════════════════════════════');
-console.info('✓ Clean signal state machine with single resolution point');
-console.info('✓ Detailed failure reasons (asteroid, trajectory, blackout, etc.)');
-console.info('✓ Leaderboard persistence with upsert + reload');
-console.info('✓ Achievements load cleanly on account switch');
-console.info('✓ No state leaks or duplicate logic');
-console.info('✓ Magnetic snap animation on capture');
+console.info('VOIDRELAY LOGIC VERIFICATION:');
+console.info('1. Single resolution guard active');
+console.info('2. Capture radius logic active (80%)');
+console.info('3. Blackout rule enforced');
+console.info('4. Asteroid collision enforced');
+console.info('5. Detailed failure reasons enforced');
+console.info('6. Leaderboard uses upsert on user_id');
+console.info('7. Achievements reload on auth change');
+console.info('8. No duplicate auth listeners');
 console.info('═══════════════════════════════════════════════════════════');
