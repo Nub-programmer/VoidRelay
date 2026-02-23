@@ -1,14 +1,4 @@
-// ============================================================
-// VOIDRELAY - INTERPLANETARY SIGNAL RELAY SIMULATOR
-// ============================================================
-// A retro-styled mission control system for managing
-// deep space communications between Earth, Moon, and Mars.
-// ============================================================
-
-// ============================================================================
-// SECTION 1: CONFIGURATION & INITIALIZATION
-// ============================================================================
-
+// 🚀 VoidRelay Core Logic // Stabilization & Realism Build
 const supabaseUrl = window.VOID_SB_URL;
 const supabaseKey = window.VOID_SB_KEY;
 
@@ -57,93 +47,68 @@ let emergencyTokens = parseInt(localStorage.getItem('emergency_tokens')) || 2;
 let currentStrategy = 'NORMAL';
 let recentLogs = [];
 let selectedReplayIndex = -1;
+let unlockedCache = new Set();
 
 // Live hazards
 const asteroids = [];
 const activeStorms = new Set();
 
 // ============================================================================
-// SECTION 2: AUTH & USER MANAGEMENT
+// INITIALIZATION
 // ============================================================================
 
 async function initApp() {
-    console.log('[init] VoidRelay starting...');
-    
-    if (sb) {
-        // Single auth listener - this is the only place we handle auth changes
-        sb.auth.onAuthStateChange(async (event, session) => {
-            console.log('[auth] State change:', event);
-            user = session?.user || null;
-            
-            // Reset all UI state on auth change
-            resetUIState();
-            
-            // Load fresh data for new user
-            await initDataForUser();
-        });
+    console.log('[init] starting...');
+    if (!sb) return;
 
-        // Initial session check
-        const { data: { session } } = await sb.auth.getSession();
+    // Single Auth Listener
+    sb.auth.onAuthStateChange((event, session) => {
+        console.log('[auth] state change:', event);
         user = session?.user || null;
-    } else {
-        console.warn('[init] Running in offline mode - database features disabled');
-        user = { is_anonymous: true };
-    }
+        resetUIState();
+        initDataForUser();
+    });
 
-    // Setup UI that doesn't depend on user
+    // Initial session check
+    const { data: { session } } = await sb.auth.getSession();
+    user = session?.user || null;
+
     setupStaticUI();
-    
-    // Load user-specific data
-    await initDataForUser();
+    initDataForUser();
 
-    // Start simulation
     isInitialized = true;
     requestAnimationFrame(mainLoop);
     
-    // Start environment loops
+    // Environment loops
     setInterval(cycleAmbientInterference, 20000);
     setInterval(() => { if (Math.random() < 0.4) spawnAsteroid(); }, 30000);
     scheduleStorm();
     scheduleFlare();
-
-    console.log('[init] VoidRelay initialized');
 }
 
 function resetUIState() {
-    console.log('[ui] Resetting state for new session');
-    
+    console.log('[ui] resetting state');
     const lblist = document.getElementById('leaderboard-list');
     if (lblist) lblist.innerHTML = '';
-    
-    const logContainer = document.getElementById('logs');
-    if (logContainer) logContainer.innerHTML = '<div class="entry sys">Boot sequence complete.</div>';
-    
-    stats = { marsPings: 0 };
     recentLogs = [];
+    sessionStats = { successful: 0, failed: 0 };
+    updateIntelligenceConsole();
 }
 
 async function initDataForUser() {
-    console.log('[init] Loading data for:', user?.id || 'guest');
-    
-    // Fetch codename from profile if logged in
-    if (user && !user.is_anonymous && sb) {
+    console.log('[init] loading data for user:', user?.id || 'guest');
+    if (user && !user.is_anonymous) {
         try {
-            const { data: profile, error} = await sb
-                .from('profiles')
-                .select('codename')
-                .eq('id', user.id)
-                .maybeSingle();
-            
+            const { data: profile, error } = await sb.from('profiles').select('codename').eq('id', user.id).maybeSingle();
             if (error) throw error;
-            codename = profile?.codename || 'OPERATOR';
+            codename = profile ? profile.codename : 'OPERATOR';
         } catch (e) {
-            console.error('[init] Profile fetch error:', e);
+            console.error('[init] profile error:', e);
             codename = 'OPERATOR';
         }
     } else {
         codename = localStorage.getItem('void_relay_codename') || 'GUEST';
     }
-    
     updateUIState();
     await loadLeaderboard();
     updateIntelligenceConsole();
@@ -156,7 +121,6 @@ async function handleAuth(mode) {
     
     if (!sb) {
         if (errorDisplay) errorDisplay.innerText = 'Database connection unavailable';
-        console.error('[auth] Supabase client not initialized');
         return;
     }
     
@@ -183,11 +147,12 @@ async function handleAuth(mode) {
         
         if (result.error) throw result.error;
         
-        console.log('[auth] Success:', mode);
         codename = username;
         localStorage.setItem('void_relay_codename', username);
         
-        // Clear error display on success
+        // Clear inputs and error
+        if (usernameInput) usernameInput.value = '';
+        if (passwordInput) passwordInput.value = '';
         if (errorDisplay) errorDisplay.innerText = '';
         
     } catch (err) {
@@ -196,158 +161,19 @@ async function handleAuth(mode) {
     }
 }
 
-async function handleLogout() {
-    console.log('[auth] Logging out');
-    if (sb) await sb.auth.signOut();
-    codename = 'GUEST';
-    user = null;
-}
-
 function updateUIState() {
-    // Update codename display
     const codenameDisplay = document.getElementById('user-codename');
     if (codenameDisplay) codenameDisplay.innerText = codename;
-    
-    // Show/hide auth modal
     const authModal = document.getElementById('auth-modal');
     if (authModal) authModal.style.display = user ? 'none' : 'flex';
-    
-    // Show/hide logout button
     const logoutBtn = document.getElementById('logout-btn');
-    if (logoutBtn) {
-        if (user && !user.is_anonymous) {
-            logoutBtn.classList.remove('hidden');
-        } else {
-            logoutBtn.classList.add('hidden');
-        }
-    }
-    
-    // Update emergency token count
+    if (user && !user.is_anonymous && logoutBtn) logoutBtn.classList.remove('hidden');
     const emCount = document.getElementById('emergency-count');
     if (emCount) emCount.innerText = emergencyTokens;
-    
     updateLatencyEstimate();
 }
 
-// ---------------- DATABASE ----------------
 
-async function loadLeaderboard() {
-    const container = document.getElementById('leaderboard-list');
-    if (!container) return;
-    
-    container.innerHTML = '';
-    console.log('[leaderboard] Loading fresh data');
-    
-    if (!sb) {
-        console.log('[leaderboard] Offline mode');
-        container.innerHTML = '<div class="entry" style="opacity: 0.6;">Offline mode.</div>';
-        return;
-    }
-    
-    try {
-        const { data, error } = await sb
-            .from('leaderboards')
-            .select('user_id, codename, mars_pings')
-            .order('mars_pings', { ascending: false })
-            .limit(10);
-        
-        if (error) throw error;
-        
-        console.log('[leaderboard] Fetched rows:', data);
-        
-        if (!data || data.length === 0) {
-            console.log('[leaderboard] No entries found (possible RLS issue if records exist)');
-            container.innerHTML = '<div class="entry" style="opacity: 0.6;">No operators yet.</div>';
-            return;
-        }
-        
-        console.log('[leaderboard] Rendering', data.length, 'entries');
-        
-        // Render each leaderboard entry
-        data.forEach((row, index) => {
-            const div = document.createElement('div');
-            div.className = 'entry';
-            
-            const displayName = row.codename || (row.user_id ? `USER_${row.user_id.substring(0, 6)}` : 'STATION');
-            
-            div.innerHTML = `
-                <span>#${index + 1} ${displayName}</span>
-                <span style="float:right">${row.mars_pings} PINGS</span>
-            `;
-            container.appendChild(div);
-        });
-        
-    } catch (err) {
-        console.error('[leaderboard] Fetch error:', err);
-        container.innerHTML = '<div class="entry" style="color: var(--accent);">Leaderboard unavailable.</div>';
-    }
-}
-
-async function updateLeaderboard(score) {
-    if (!user || user.is_anonymous || !sb) {
-        console.log('[leaderboard] Guest mode - skipping update');
-        return;
-    }
-    
-    console.log('[leaderboard] Updating score:', score, 'for user:', user.id);
-    
-    const payload = {
-        user_id: user.id,
-        codename: codename,
-        mars_pings: score,
-        updated_at: new Date().toISOString()
-    };
-    
-    try {
-        // Upsert ensures each user has only one entry
-        const { error } = await sb
-            .from('leaderboards')
-            .upsert(payload, { onConflict: 'user_id' });
-        
-        if (error) throw error;
-        
-        console.log('[leaderboard] Update complete, reloading...');
-        
-        // Always reload to show fresh data
-        await loadLeaderboard();
-        
-    } catch (err) {
-        console.error('[leaderboard] Upsert error:', err);
-        addLog('Leaderboard sync failed', 'error');
-    }
-}
-
-async function logEvent(event, message, meta) {
-    const entry = { ...meta, event, message, timestamp: new Date().toISOString() };
-    recentLogs.unshift(entry);
-    if (recentLogs.length > 30) recentLogs.pop();
-    
-    // Only persist to database if logged in
-    if (!sb || !user || user.is_anonymous) return;
-    
-    try {
-        await sb.from('mission_logs').insert([{
-            user_id: user.id,
-            codename: codename,
-            event: event,
-            message: message,
-            from_planet: meta.from,
-            to_planet: meta.to,
-            strategy: meta.strategy
-        }]);
-    } catch (e) {
-        console.error('[database] Mission log error:', e);
-    }
-}
-
-async function checkAchievements(target) {
-    if (!user || user.is_anonymous) return;
-    
-    // Simple achievement check for first Mars ping
-    if (target === 'mars' && stats.marsPings === 1) {
-        console.log('[achievements] First Mars ping milestone');
-    }
-}
 
 function updateIntelligenceConsole() {
     const successEl = document.getElementById('intel-success');
@@ -378,24 +204,23 @@ function updateIntelligenceConsole() {
     if (difficultyEl) difficultyEl.innerText = difficulty;
 }
 
-// ---------------- UI ----------------
+// ============================================================================
+// UI SETUP
+// ============================================================================
 
 function setupStaticUI() {
-    // Generate starfield background
     const stars = document.getElementById('stars-container');
     if (stars) {
         for (let i = 0; i < 100; i++) {
             const s = document.createElement('div');
             s.className = 'star';
             s.style.width = s.style.height = Math.random() * 2 + 'px';
-            s.style.left = Math.random() * 100 + '%'; 
-            s.style.top = Math.random() * 100 + '%';
+            s.style.left = Math.random() * 100 + '%'; s.style.top = Math.random() * 100 + '%';
             s.style.opacity = Math.random();
             stars.appendChild(s);
         }
     }
 
-    // Load saved theme
     const savedTheme = localStorage.getItem('void_theme') || 'space';
     document.body.dataset.theme = savedTheme;
     const themeSelect = document.getElementById('theme-select');
@@ -404,11 +229,10 @@ function setupStaticUI() {
         themeSelect.onchange = (e) => {
             document.body.dataset.theme = e.target.value;
             localStorage.setItem('void_theme', e.target.value);
-            addLog(`Theme: ${e.target.value}`, 'sys');
+            addLog(`Theme changed to ${e.target.value}`, 'sys');
         };
     }
 
-    // Miniview toggle
     const vizContainer = document.getElementById('viz-container');
     const toggleMiniviewBtn = document.getElementById('toggle-miniview');
     if (vizContainer && toggleMiniviewBtn) {
@@ -423,7 +247,6 @@ function setupStaticUI() {
         };
     }
 
-    // Control panel listeners
     document.getElementById('sim-speed')?.addEventListener('input', e => { 
         const speedVal = document.getElementById('speed-val');
         if (speedVal) speedVal.innerText = `${e.target.value}x`; 
@@ -436,7 +259,6 @@ function setupStaticUI() {
     document.getElementById('origin')?.addEventListener('change', updateLatencyEstimate);
     document.getElementById('destination')?.addEventListener('change', updateLatencyEstimate);
 
-    // Modal handlers
     document.getElementById('open-knowledge').onclick = () => document.getElementById('knowledge-modal').classList.remove('hidden');
     document.getElementById('close-knowledge').onclick = () => document.getElementById('knowledge-modal').classList.add('hidden');
     document.getElementById('open-telemetry').onclick = openTelemetry;
@@ -445,57 +267,35 @@ function setupStaticUI() {
     document.getElementById('export-btn').onclick = () => exportTelemetry(recentLogs);
     document.getElementById('clear-logs-btn').onclick = () => { recentLogs = []; openTelemetry(); };
 
-    // Strategy selector
     document.getElementById('strategy')?.addEventListener('change', e => {
         currentStrategy = e.target.value;
         addLog(`Strategy: ${currentStrategy}`, 'sys');
     });
 
-    // Auth buttons
     const loginBtn = document.getElementById('auth-login');
     const signupBtn = document.getElementById('auth-signup');
     const guestBtn = document.getElementById('auth-guest');
     const logoutBtn = document.getElementById('logout-btn');
-    
-    if (loginBtn) {
-        loginBtn.onclick = () => {
-            console.log('[ui] Login button clicked');
-            handleAuth('login');
-        };
-    }
-    
-    if (signupBtn) {
-        signupBtn.onclick = () => {
-            console.log('[ui] Signup button clicked');
-            handleAuth('signup');
-        };
-    }
-    
-    if (guestBtn) {
-        guestBtn.onclick = async () => {
-            console.log('[ui] Guest button clicked');
-            codename = "GUEST_" + Math.floor(Math.random() * 9999);
-            user = { is_anonymous: true };
-            document.getElementById('auth-modal').style.display = 'none';
-            resetUIState();
-            await initDataForUser();
-        };
-    }
-    
-    if (logoutBtn) {
-        logoutBtn.onclick = () => {
-            console.log('[ui] Logout button clicked');
-            handleLogout();
-        };
-    }
-    
-    // Send button
     const sendBtn = document.getElementById('send-btn');
+    
+    if (loginBtn) loginBtn.onclick = () => handleAuth('login');
+    if (signupBtn) signupBtn.onclick = () => handleAuth('signup');
+    if (guestBtn) guestBtn.onclick = async () => {
+        codename = "GUEST_" + Math.floor(Math.random() * 9999);
+        user = { is_anonymous: true };
+        const authModal = document.getElementById('auth-modal');
+        if (authModal) authModal.style.display = 'none';
+        resetUIState();
+        await initDataForUser();
+    };
+    if (logoutBtn) logoutBtn.onclick = async () => { 
+        await sb.auth.signOut();
+    };
     if (sendBtn) {
         sendBtn.onclick = async () => {
             if (!isInitialized || sendBtn.disabled) return;
-            const from = document.getElementById('origin').value;
-            const to = document.getElementById('destination').value;
+            const from = document.getElementById('origin')?.value;
+            const to = document.getElementById('destination')?.value;
             if (from === to) return showToast("LOOPBACK ERROR", "error");
             if (currentStrategy === 'EMERGENCY') {
                 if (emergencyTokens <= 0) return addLog("TOKENS DEPLETED", "error");
@@ -503,91 +303,8 @@ function setupStaticUI() {
                 localStorage.setItem('emergency_tokens', emergencyTokens);
                 document.getElementById('emergency-count').innerText = emergencyTokens;
             }
-            transmit(from, to, document.getElementById('message').value, currentStrategy);
+            transmit(from, to, document.getElementById('message')?.value || '', currentStrategy);
         };
-    }
-}
-
-async function loadLeaderboard() {
-    const container = document.getElementById('leaderboard-list');
-    if (!container) return;
-    
-    container.innerHTML = '';
-    console.log('[leaderboard] Loading fresh data');
-    
-    if (!sb) {
-        console.log('[leaderboard] Database unavailable');
-        container.innerHTML = '<div class="entry" style="opacity: 0.6;">Offline mode.</div>';
-        return;
-    }
-    
-    try {
-        const { data, error } = await sb
-            .from('leaderboards')
-            .select('user_id, codename, mars_pings')
-            .order('mars_pings', { ascending: false })
-            .limit(10);
-        
-        if (error) throw error;
-        
-        if (!data || data.length === 0) {
-            console.log('[leaderboard] No entries found');
-            container.innerHTML = '<div class="entry" style="opacity: 0.6;">No operators yet.</div>';
-            return;
-        }
-        
-        console.log('[leaderboard] Loaded', data.length, 'entries');
-        
-        // Display leaderboard with fallback usernames
-        data.forEach((row, index) => {
-            const div = document.createElement('div');
-            div.className = 'entry';
-            
-            const displayName = row.codename || (row.user_id ? `USER_${row.user_id.substring(0, 6)}` : 'STATION');
-            
-            div.innerHTML = `
-                <span>#${index + 1} ${displayName}</span>
-                <span style="float:right">${row.mars_pings} PINGS</span>
-            `;
-            container.appendChild(div);
-        });
-        
-    } catch (err) {
-        console.error('[leaderboard] Fetch error:', err);
-        container.innerHTML = '<div class="entry" style="color: var(--accent);">Leaderboard unavailable.</div>';
-    }
-}
-
-async function updateLeaderboard(score) {
-    if (!user || user.is_anonymous || !sb) {
-        console.log('[leaderboard] Skipping update for guest user or database unavailable');
-        return;
-    }
-    
-    console.log('[leaderboard] Updating score:', score, 'for user:', user.id);
-    
-    const payload = {
-        user_id: user.id,
-        codename: codename,
-        mars_pings: score,
-        updated_at: new Date().toISOString()
-    };
-    
-    try {
-        const { error } = await sb
-            .from('leaderboards')
-            .upsert(payload, { onConflict: 'user_id' });
-        
-        if (error) throw error;
-        
-        console.log('[leaderboard] Update successful, reloading...');
-        
-        // Always reload after update to ensure fresh data
-        await loadLeaderboard();
-        
-    } catch (err) {
-        console.error('[leaderboard] Upsert error:', err);
-        addLog('Leaderboard sync failed', 'error');
     }
 }
 
@@ -692,16 +409,40 @@ function setupStaticUI() {
         addLog(`Strategy: ${currentStrategy}`, 'sys');
     });
 
-    document.getElementById('auth-login').onclick = () => handleAuth('login');
-    document.getElementById('auth-signup').onclick = () => handleAuth('signup');
-    document.getElementById('auth-guest').onclick = async () => {
+    const loginBtn = document.getElementById('auth-login');
+    const signupBtn = document.getElementById('auth-signup');
+    const guestBtn = document.getElementById('auth-guest');
+    const logoutBtn = document.getElementById('logout-btn');
+    const sendBtn = document.getElementById('send-btn');
+    
+    if (loginBtn) loginBtn.onclick = () => handleAuth('login');
+    if (signupBtn) signupBtn.onclick = () => handleAuth('signup');
+    if (guestBtn) guestBtn.onclick = async () => {
         codename = "GUEST_" + Math.floor(Math.random() * 9999);
         user = { is_anonymous: true };
-        document.getElementById('auth-modal').style.display = 'none';
+        const authModal = document.getElementById('auth-modal');
+        if (authModal) authModal.style.display = 'none';
         resetUIState();
         await initDataForUser();
     };
-    document.getElementById('logout-btn').onclick = handleLogout;
+    if (logoutBtn) logoutBtn.onclick = async () => { 
+        await sb.auth.signOut();
+    };
+    if (sendBtn) {
+        sendBtn.onclick = async () => {
+            if (!isInitialized || sendBtn.disabled) return;
+            const from = document.getElementById('origin')?.value;
+            const to = document.getElementById('destination')?.value;
+            if (from === to) return showToast("LOOPBACK ERROR", "error");
+            if (currentStrategy === 'EMERGENCY') {
+                if (emergencyTokens <= 0) return addLog("TOKENS DEPLETED", "error");
+                emergencyTokens--;
+                localStorage.setItem('emergency_tokens', emergencyTokens);
+                document.getElementById('emergency-count').innerText = emergencyTokens;
+            }
+            transmit(from, to, document.getElementById('message')?.value || '', currentStrategy);
+        };
+    }
 }
 
 function spawnSolarStorm() {
@@ -716,11 +457,13 @@ function spawnSolarStorm() {
     activeStorms.add(stormObj); isStorming = true;
     document.getElementById('viz-container')?.classList.add('shake');
     addLog("SOLAR STORM DETECTED", "error");
+    updateIntelligenceConsole();
     setTimeout(() => {
         el.remove(); activeStorms.delete(stormObj);
         if (activeStorms.size === 0) {
             document.getElementById('viz-container')?.classList.remove('shake');
             isStorming = false;
+            updateIntelligenceConsole();
         }
     }, duration);
 }
@@ -735,9 +478,11 @@ function triggerFlareBurst() {
     const oldStates = { ...PLANET_STATES };
     Object.keys(PLANET_STATES).forEach(k => PLANET_STATES[k] = 'interference');
     updatePlanetVisuals();
+    updateIntelligenceConsole();
     setTimeout(() => {
         Object.keys(PLANET_STATES).forEach(k => PLANET_STATES[k] = oldStates[k]);
         updatePlanetVisuals();
+        updateIntelligenceConsole();
     }, STORM_CONFIG.flareDuration);
 }
 
@@ -789,6 +534,7 @@ function cycleAmbientInterference() {
         PLANET_STATES[p] = rand > 0.9 ? 'blackout' : rand > 0.7 ? 'interference' : 'nominal'; 
     });
     updatePlanetVisuals();
+    updateIntelligenceConsole();
 }
 
 function updatePlanetVisuals() {
@@ -811,7 +557,64 @@ function updateLatencyEstimate() {
     if (val) val.innerText = `${(dist / 10 / speed).toFixed(1)}s`;
 }
 
+async function loadLeaderboard() {
+    const container = document.getElementById("leaderboard-list");
+    if (!container) return;
+    container.innerHTML = "";
+
+    try {
+        const { data, error } = await sb
+            .from("leaderboards")
+            .select("user_id, codename, mars_pings")
+            .order("mars_pings", { ascending: false });
+
+        if (error) throw error;
+
+        if (!data || data.length === 0) {
+            container.innerHTML = "<div>No operators yet.</div>";
+            return;
+        }
+
+        data.forEach((row, index) => {
+            const div = document.createElement("div");
+            div.className = 'entry';
+            div.innerHTML = `
+                <span>#${index+1} ${row.codename || (row.user_id ? row.user_id.substring(0,6) : 'STATION')}</span>
+                <span style="float:right">${row.mars_pings} PINGS</span>
+            `;
+            container.appendChild(div);
+        });
+
+    } catch (err) {
+        console.error("[leaderboard] error:", err);
+        container.innerHTML = "<div>Leaderboard unavailable.</div>";
+    }
+}
+
+async function updateLeaderboard(pings) {
+    if (!user || user.is_anonymous) return;
+
+    const payload = {
+        user_id: user.id,
+        codename: codename,
+        mars_pings: pings,
+        updated_at: new Date().toISOString()
+    };
+
+    const { error } = await sb
+        .from("leaderboards")
+        .upsert(payload, { onConflict: "user_id" });
+
+    if (error) {
+        console.error("[leaderboard] upsert error:", error);
+        return;
+    }
+
+    await loadLeaderboard();
+}
+
 async function transmit(from, to, msg, strategy) {
+    console.log('[transmit] Called with:', { from, to, msg, strategy });
     const sendBtn = document.getElementById('send-btn');
     if (sendBtn?.disabled) return;
     if (sendBtn) sendBtn.disabled = true;
@@ -1088,15 +891,3 @@ function exportTelemetry(logs) {
 // ============================================================================
 
 document.addEventListener('DOMContentLoaded', initApp);
-
-console.info('═══════════════════════════════════════════════════════════');
-console.info('VOIDRELAY LOGIC VERIFICATION:');
-console.info('1. Single resolution guard active');
-console.info('2. Capture radius logic active (80%)');
-console.info('3. Blackout rule enforced');
-console.info('4. Asteroid collision enforced');
-console.info('5. Detailed failure reasons enforced');
-console.info('6. Leaderboard uses upsert on user_id');
-console.info('7. Achievements reload on auth change');
-console.info('8. No duplicate auth listeners');
-console.info('═══════════════════════════════════════════════════════════');
