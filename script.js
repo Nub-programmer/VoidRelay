@@ -452,16 +452,60 @@ function setupStaticUI() {
     });
 
     // Auth buttons
-    document.getElementById('auth-login').onclick = () => handleAuth('login');
-    document.getElementById('auth-signup').onclick = () => handleAuth('signup');
-    document.getElementById('auth-guest').onclick = async () => {
-        codename = "GUEST_" + Math.floor(Math.random() * 9999);
-        user = { is_anonymous: true };
-        document.getElementById('auth-modal').style.display = 'none';
-        resetUIState();
-        await initDataForUser();
-    };
-    document.getElementById('logout-btn').onclick = handleLogout;
+    const loginBtn = document.getElementById('auth-login');
+    const signupBtn = document.getElementById('auth-signup');
+    const guestBtn = document.getElementById('auth-guest');
+    const logoutBtn = document.getElementById('logout-btn');
+    
+    if (loginBtn) {
+        loginBtn.onclick = () => {
+            console.log('[ui] Login button clicked');
+            handleAuth('login');
+        };
+    }
+    
+    if (signupBtn) {
+        signupBtn.onclick = () => {
+            console.log('[ui] Signup button clicked');
+            handleAuth('signup');
+        };
+    }
+    
+    if (guestBtn) {
+        guestBtn.onclick = async () => {
+            console.log('[ui] Guest button clicked');
+            codename = "GUEST_" + Math.floor(Math.random() * 9999);
+            user = { is_anonymous: true };
+            document.getElementById('auth-modal').style.display = 'none';
+            resetUIState();
+            await initDataForUser();
+        };
+    }
+    
+    if (logoutBtn) {
+        logoutBtn.onclick = () => {
+            console.log('[ui] Logout button clicked');
+            handleLogout();
+        };
+    }
+    
+    // Send button
+    const sendBtn = document.getElementById('send-btn');
+    if (sendBtn) {
+        sendBtn.onclick = async () => {
+            if (!isInitialized || sendBtn.disabled) return;
+            const from = document.getElementById('origin').value;
+            const to = document.getElementById('destination').value;
+            if (from === to) return showToast("LOOPBACK ERROR", "error");
+            if (currentStrategy === 'EMERGENCY') {
+                if (emergencyTokens <= 0) return addLog("TOKENS DEPLETED", "error");
+                emergencyTokens--;
+                localStorage.setItem('emergency_tokens', emergencyTokens);
+                document.getElementById('emergency-count').innerText = emergencyTokens;
+            }
+            transmit(from, to, document.getElementById('message').value, currentStrategy);
+        };
+    }
 }
 
 async function loadLeaderboard() {
@@ -767,21 +811,10 @@ function updateLatencyEstimate() {
     if (val) val.innerText = `${(dist / 10 / speed).toFixed(1)}s`;
 }
 
-document.getElementById('send-btn').onclick = async () => {
-    if (!isInitialized || document.getElementById('send-btn').disabled) return;
-    const from = document.getElementById('origin').value; const to = document.getElementById('destination').value;
-    if (from === to) return showToast("LOOPBACK ERROR", "error");
-    if (currentStrategy === 'EMERGENCY') {
-        if (emergencyTokens <= 0) return addLog("TOKENS DEPLETED", "error");
-        emergencyTokens--; localStorage.setItem('emergency_tokens', emergencyTokens);
-        document.getElementById('emergency-count').innerText = emergencyTokens;
-    }
-    transmit(from, to, document.getElementById('message').value, currentStrategy);
-};
-
 async function transmit(from, to, msg, strategy) {
-    if (document.getElementById('send-btn').disabled) return;
-    document.getElementById('send-btn').disabled = true;
+    const sendBtn = document.getElementById('send-btn');
+    if (sendBtn?.disabled) return;
+    if (sendBtn) sendBtn.disabled = true;
     
     const speed = parseFloat(document.getElementById('sim-speed')?.value || 1);
     const startPos = { ...PLANET_DATA[from].pos };
@@ -917,7 +950,8 @@ async function resolveSignal(pkt, targetPlanet, signalState, outcome, failureRea
     
     // Clean up visual packet
     if (pkt) pkt.remove();
-    document.getElementById('send-btn').disabled = false;
+    const sendBtn = document.getElementById('send-btn');
+    if (sendBtn) sendBtn.disabled = false;
     
     // Calculate final loss rate with modifiers
     let lossRate = parseInt(document.getElementById('packet-loss')?.value || 15);
