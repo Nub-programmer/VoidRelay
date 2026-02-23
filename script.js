@@ -380,11 +380,94 @@ function updateIntelligenceConsole() {
 
 // ---------------- UI ----------------
 
-async function setupStaticUI() {
+function setupStaticUI() {
+    // Generate starfield background
+    const stars = document.getElementById('stars-container');
+    if (stars) {
+        for (let i = 0; i < 100; i++) {
+            const s = document.createElement('div');
+            s.className = 'star';
+            s.style.width = s.style.height = Math.random() * 2 + 'px';
+            s.style.left = Math.random() * 100 + '%'; 
+            s.style.top = Math.random() * 100 + '%';
+            s.style.opacity = Math.random();
+            stars.appendChild(s);
+        }
+    }
+
+    // Load saved theme
+    const savedTheme = localStorage.getItem('void_theme') || 'space';
+    document.body.dataset.theme = savedTheme;
+    const themeSelect = document.getElementById('theme-select');
+    if (themeSelect) {
+        themeSelect.value = savedTheme;
+        themeSelect.onchange = (e) => {
+            document.body.dataset.theme = e.target.value;
+            localStorage.setItem('void_theme', e.target.value);
+            addLog(`Theme: ${e.target.value}`, 'sys');
+        };
+    }
+
+    // Miniview toggle
+    const vizContainer = document.getElementById('viz-container');
+    const toggleMiniviewBtn = document.getElementById('toggle-miniview');
+    if (vizContainer && toggleMiniviewBtn) {
+        if (localStorage.getItem('void_mini_view') === '1') {
+            vizContainer.classList.add('mini');
+            toggleMiniviewBtn.innerText = "Expand";
+        }
+        toggleMiniviewBtn.onclick = () => {
+            const isMini = vizContainer.classList.toggle('mini');
+            localStorage.setItem('void_mini_view', isMini ? '1' : '0');
+            toggleMiniviewBtn.innerText = isMini ? "Expand" : "Miniview";
+        };
+    }
+
+    // Control panel listeners
+    document.getElementById('sim-speed')?.addEventListener('input', e => { 
+        const speedVal = document.getElementById('speed-val');
+        if (speedVal) speedVal.innerText = `${e.target.value}x`; 
+        updateLatencyEstimate();
+    });
+    document.getElementById('packet-loss')?.addEventListener('input', e => { 
+        const lossVal = document.getElementById('loss-val');
+        if (lossVal) lossVal.innerText = `${e.target.value}%`; 
+    });
+    document.getElementById('origin')?.addEventListener('change', updateLatencyEstimate);
+    document.getElementById('destination')?.addEventListener('change', updateLatencyEstimate);
+
+    // Modal handlers
+    document.getElementById('open-knowledge').onclick = () => document.getElementById('knowledge-modal').classList.remove('hidden');
+    document.getElementById('close-knowledge').onclick = () => document.getElementById('knowledge-modal').classList.add('hidden');
+    document.getElementById('open-telemetry').onclick = openTelemetry;
+    document.getElementById('close-telemetry').onclick = () => document.getElementById('telemetry-panel').style.display = 'none';
+    document.getElementById('replay-btn').onclick = replayTelemetry;
+    document.getElementById('export-btn').onclick = () => exportTelemetry(recentLogs);
+    document.getElementById('clear-logs-btn').onclick = () => { recentLogs = []; openTelemetry(); };
+
+    // Strategy selector
+    document.getElementById('strategy')?.addEventListener('change', e => {
+        currentStrategy = e.target.value;
+        addLog(`Strategy: ${currentStrategy}`, 'sys');
+    });
+
+    // Auth buttons
+    document.getElementById('auth-login').onclick = () => handleAuth('login');
+    document.getElementById('auth-signup').onclick = () => handleAuth('signup');
+    document.getElementById('auth-guest').onclick = async () => {
+        codename = "GUEST_" + Math.floor(Math.random() * 9999);
+        user = { is_anonymous: true };
+        document.getElementById('auth-modal').style.display = 'none';
+        resetUIState();
+        await initDataForUser();
+    };
+    document.getElementById('logout-btn').onclick = handleLogout;
+}
+
+async function loadLeaderboard() {
     const container = document.getElementById('leaderboard-list');
     if (!container) return;
     
-    // Always clear before loading
     container.innerHTML = '';
     console.log('[leaderboard] Loading fresh data');
     
