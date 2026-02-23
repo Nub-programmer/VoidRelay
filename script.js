@@ -74,23 +74,27 @@ const localPreviewAchievements = [
 
 async function initApp() {
     console.log('[init] VoidRelay starting...');
-    if (!sb) return;
+    
+    if (sb) {
+        // Single auth listener - this is the only place we handle auth changes
+        sb.auth.onAuthStateChange(async (event, session) => {
+            console.log('[auth] State change:', event);
+            user = session?.user || null;
+            
+            // Reset all UI state on auth change
+            resetUIState();
+            
+            // Load fresh data for new user
+            await initDataForUser();
+        });
 
-    // Single auth listener - this is the only place we handle auth changes
-    sb.auth.onAuthStateChange(async (event, session) => {
-        console.log('[auth] State change:', event);
+        // Initial session check
+        const { data: { session } } = await sb.auth.getSession();
         user = session?.user || null;
-        
-        // Reset all UI state on auth change
-        resetUIState();
-        
-        // Load fresh data for new user
-        await initDataForUser();
-    });
-
-    // Initial session check
-    const { data: { session } } = await sb.auth.getSession();
-    user = session?.user || null;
+    } else {
+        console.warn('[init] Running in offline mode - database features disabled');
+        user = { is_anonymous: true };
+    }
 
     // Setup UI that doesn't depend on user
     setupStaticUI();
@@ -135,7 +139,7 @@ async function initDataForUser() {
     console.log('[init] Loading data for user:', user?.id || 'guest');
     
     // Load codename
-    if (user && !user.is_anonymous) {
+    if (user && !user.is_anonymous && sb) {
         try {
             const { data: profile, error} = await sb
                 .from('profiles')
@@ -168,6 +172,12 @@ async function handleAuth(mode) {
     const passwordInput = document.getElementById('password-input');
     const errorDisplay = document.getElementById('auth-error');
     
+    if (!sb) {
+        if (errorDisplay) errorDisplay.innerText = 'Database connection unavailable';
+        console.error('[auth] Supabase client not initialized');
+        return;
+    }
+    
     const username = usernameInput?.value.trim();
     const password = passwordInput?.value;
     
@@ -194,6 +204,9 @@ async function handleAuth(mode) {
         console.log('[auth] Success:', mode);
         codename = username;
         localStorage.setItem('void_relay_codename', username);
+        
+        // Clear error display on success
+        if (errorDisplay) errorDisplay.innerText = '';
         
     } catch (err) {
         console.error('[auth] Error:', err);
@@ -246,7 +259,7 @@ async function loadAchievements() {
     console.log('[achievements] Loading for user:', user?.id || 'guest');
     
     // Guest mode: show preview
-    if (!user || user.is_anonymous) {
+    if (!user || user.is_anonymous || !sb) {
         console.log('[achievements] Guest mode - showing preview');
         renderAchievements(localPreviewAchievements);
         return;
@@ -307,6 +320,12 @@ async function loadLeaderboard() {
     container.innerHTML = '';
     console.log('[leaderboard] Loading fresh data');
     
+    if (!sb) {
+        console.log('[leaderboard] Database unavailable');
+        container.innerHTML = '<div class="entry" style="opacity: 0.6;">Offline mode.</div>';
+        return;
+    }
+    
     try {
         const { data, error } = await sb
             .from('leaderboards')
@@ -345,8 +364,8 @@ async function loadLeaderboard() {
 }
 
 async function updateLeaderboard(score) {
-    if (!user || user.is_anonymous) {
-        console.log('[leaderboard] Skipping update for guest user');
+    if (!user || user.is_anonymous || !sb) {
+        console.log('[leaderboard] Skipping update for guest user or database unavailable');
         return;
     }
     
@@ -480,27 +499,14 @@ function setupStaticUI() {
 
     document.getElementById('auth-login').onclick = () => handleAuth('login');
     document.getElementById('auth-signup').onclick = () => handleAuth('signup');
-    document.getElementById('auth-guest').onclick = () => {
+    document.getElementById('auth-guest').onclick = async () => {
         codename = "GUEST_" + Math.floor(Math.random() * 9999);
         user = { is_anonymous: true };
         document.getElementById('auth-modal').style.display = 'none';
         resetUIState();
-        initDataForUser();
+        await initDataForUser();
     };
     document.getElementById('logout-btn').onclick = handleLogout;
-}
-
-function updateUIState() {
-    const codenameDisplay = document.getElementById('user-codename');
-    if (codenameDisplay) codenameDisplay.innerText = codename;
-    const authModal = document.getElementById('auth-modal');
-    if (authModal) authModal.style.display = user ? 'none' : 'flex';
-    const logoutBtn = document.getElementById('logout-btn');
-    if (user && !user.is_anonymous && logoutBtn) logoutBtn.classList.remove('hidden');
-    else if (logoutBtn) logoutBtn.classList.add('hidden');
-    const emCount = document.getElementById('emergency-count');
-    if (emCount) emCount.innerText = emergencyTokens;
-    updateLatencyEstimate();
 }
 
 function spawnSolarStorm() {
