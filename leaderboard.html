@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VoidRelay // Full Relay Operator Rankings</title>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Gaegu&family=VT323&display=swap" rel="stylesheet">
+    <script>
+        window.VOID_SB_URL = "https://mezsypcnpscltrhrqtdb.supabase.co";
+        window.VOID_SB_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1lenN5cGNucHNjbHRyaHJxdGRiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAwMDkxMDcsImV4cCI6MjA4NTU4NTEwN30.KGPICwFTn-Hvyn24uhhwA8YccG_D87fmPfZqCSZzerE";
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 2rem;
+            background: var(--bg);
+            color: var(--text);
+            font-family: 'VT323', monospace;
+            overflow-x: hidden;
+        }
+        
+        .leaderboard-container {
+            max-width: 600px;
+            margin: 0 auto;
+        }
+        
+        .leaderboard-header {
+            text-align: center;
+            margin-bottom: 2rem;
+            border-bottom: 2px solid var(--accent);
+            padding-bottom: 1rem;
+        }
+        
+        .leaderboard-header h1 {
+            margin: 0;
+            font-size: 1.8rem;
+            color: var(--accent);
+            text-shadow: 0 0 10px var(--accent);
+        }
+        
+        .leaderboard-list {
+            border: 2px solid var(--accent);
+            background: rgba(0, 255, 0, 0.05);
+            max-height: 70vh;
+            overflow-y: auto;
+        }
+        
+        .leaderboard-list > div {
+            padding: 0.8rem 1rem;
+            border-bottom: 1px solid rgba(0, 255, 0, 0.3);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .leaderboard-list > div:last-child {
+            border-bottom: none;
+        }
+        
+        .leaderboard-list > div:hover {
+            background: rgba(0, 255, 0, 0.1);
+        }
+        
+        .rank-info {
+            display: flex;
+            gap: 1rem;
+            flex: 1;
+        }
+        
+        .rank-number {
+            color: var(--accent);
+            font-weight: bold;
+            min-width: 2rem;
+        }
+        
+        .operator-name {
+            flex: 1;
+        }
+        
+        .transmission-count {
+            color: var(--accent);
+            font-weight: bold;
+            text-align: right;
+        }
+        
+        .back-button {
+            margin-top: 2rem;
+            text-align: center;
+        }
+        
+        .back-button button {
+            padding: 0.8rem 1.5rem;
+            background: var(--bg);
+            color: var(--accent);
+            border: 2px solid var(--accent);
+            font-family: 'VT323', monospace;
+            font-size: 1rem;
+            cursor: pointer;
+            text-transform: uppercase;
+            box-shadow: 0 0 10px rgba(0, 255, 0, 0.5);
+        }
+        
+        .back-button button:hover {
+            background: rgba(0, 255, 0, 0.1);
+            text-shadow: 0 0 10px var(--accent);
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 2rem;
+            color: var(--accent);
+        }
+        
+        .error-message {
+            text-align: center;
+            padding: 2rem;
+            color: #ff0055;
+            border: 2px solid #ff0055;
+        }
+    </style>
+</head>
+<body data-theme="space">
+    <div class="stars-container" id="stars-container"></div>
+    <div class="crt-overlay"></div>
+
+    <div class="leaderboard-container">
+        <div class="leaderboard-header">
+            <h1>FULL RELAY OPERATOR RANKINGS</h1>
+        </div>
+        
+        <div id="loading" class="loading">INITIALIZING LEADERBOARD SCAN...</div>
+        <div id="error" class="error-message" style="display: none;"></div>
+        <div id="leaderboard-list" class="leaderboard-list" style="display: none;"></div>
+        
+        <div class="back-button">
+            <button onclick="window.location.href = 'index.html';">RETURN TO MISSION CONTROL</button>
+        </div>
+    </div>
+
+    <script>
+        let sb;
+        
+        async function initLeaderboard() {
+            try {
+                // Initialize Supabase
+                sb = window.supabase.createClient(window.VOID_SB_URL, window.VOID_SB_KEY);
+                
+                // Fetch all leaderboard rows
+                const { data, error } = await sb
+                    .from("leaderboards")
+                    .select("user_id, codename, mars_pings")
+                    .order("mars_pings", { ascending: false });
+                
+                if (error) throw error;
+                
+                const loadingEl = document.getElementById('loading');
+                const errorEl = document.getElementById('error');
+                const listEl = document.getElementById('leaderboard-list');
+                
+                if (!data || data.length === 0) {
+                    loadingEl.style.display = 'none';
+                    listEl.innerHTML = '<div style="padding: 2rem; text-align: center;">NO OPERATOR DATA AVAILABLE</div>';
+                    listEl.style.display = 'block';
+                    return;
+                }
+                
+                // Render full list
+                listEl.innerHTML = '';
+                data.forEach((row, index) => {
+                    const div = document.createElement("div");
+                    div.innerHTML = `
+                        <div class="rank-info">
+                            <span class="rank-number">#${index + 1}</span>
+                            <span class="operator-name">${row.codename || (row.user_id ? `USER_${row.user_id.substring(0, 6)}` : 'STATION')}</span>
+                        </div>
+                        <span class="transmission-count">${row.mars_pings} UPLINKS</span>
+                    `;
+                    listEl.appendChild(div);
+                });
+                
+                loadingEl.style.display = 'none';
+                listEl.style.display = 'block';
+                
+            } catch (err) {
+                console.error("[leaderboard] Error loading full rankings:", err);
+                document.getElementById('loading').style.display = 'none';
+                const errorEl = document.getElementById('error');
+                errorEl.innerHTML = `LEADERBOARD ERROR: ${err.message || 'Unable to load rankings'}`;
+                errorEl.style.display = 'block';
+            }
+        }
+        
+        // Generate starfield
+        function generateStars() {
+            const container = document.getElementById('stars-container');
+            for (let i = 0; i < 100; i++) {
+                const star = document.createElement('div');
+                star.className = 'star';
+                star.style.width = Math.random() * 2 + 'px';
+                star.style.height = star.style.width;
+                star.style.left = Math.random() * 100 + '%';
+                star.style.top = Math.random() * 100 + '%';
+                star.style.opacity = Math.random();
+                star.style.position = 'fixed';
+                star.style.backgroundColor = '#0f0';
+                star.style.borderRadius = '50%';
+                star.style.pointerEvents = 'none';
+                container.appendChild(star);
+            }
+        }
+        
+        // Initialize on load
+        document.addEventListener('DOMContentLoaded', () => {
+            generateStars();
+            initLeaderboard();
+        });
+    </script>
+</body>
+</html>
