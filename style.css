@@ -177,6 +177,30 @@ textarea { height: 60px; resize: none; }
 
 .achievements-panel-left { padding: 10px; flex: 1; min-height: 200px; }
 .achievements-list-scroll { overflow-y: auto; flex: 1; margin-top: 5px; }
+
+/* Intelligence Console Styling */
+.intel-stat {
+    padding: 8px 10px;
+    margin: 5px 0;
+    background: rgba(0, 255, 0, 0.05);
+    border-left: 2px solid var(--text);
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.85rem;
+}
+
+.intel-label {
+    color: var(--text);
+    opacity: 0.7;
+}
+
+.intel-value {
+    color: var(--text);
+    font-weight: bold;
+    font-family: 'VT323', monospace;
+    font-size: 1rem;
+}
+
 .achievement-badge { 
     display: flex; 
     align-items: center; 
