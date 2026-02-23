@@ -9,25 +9,25 @@ if (supabaseKey && supabaseUrl) {
     console.error("❌ Supabase config missing.");
 }
 
-// Orbital physics constants
+// How fast planets orbit - tweak this if you want things to move faster/slower
 const ORBIT_SPEED_MULT = 0.0008;
 const ORBIT_RAD_EARTH = 15;
 const ORBIT_RAD_MARS = 35;
 const ORBIT_RAD_MOON = 6;
 
-// Solar storm configuration
+// Storm settings - basically how often they spawn and how bad they are
 const STORM_CONFIG = {
-    spawnIntervalMin: 30000,
-    spawnIntervalMax: 90000,
-    durationMin: 5000,
-    durationMax: 9000,
-    lossIncrease: 25,
-    flareIntervalMin: 180000,
-    flareIntervalMax: 420000,
-    flareDuration: 4000
+    spawnIntervalMin: 30000,     // Earliest a storm can spawn (30 sec)
+    spawnIntervalMax: 90000,     // Latest a storm can spawn (90 sec)
+    durationMin: 5000,           // Shortest storm duration
+    durationMax: 9000,           // Longest storm duration
+    lossIncrease: 25,            // How much packet loss goes up during storms
+    flareIntervalMin: 180000,    // Min time between solar flares (3 min)
+    flareIntervalMax: 420000,    // Max time between solar flares (7 min)
+    flareDuration: 4000          // How long flares last (4 sec)
 };
 
-// Planet data (orbital simulation)
+// Planet setup - where they start and how fast they move
 const PLANET_DATA = {
     earth: { name: 'Earth', angle: 0, speed: 0.5, radius: ORBIT_RAD_EARTH, pos: { x: 50, y: 50 } },
     mars: { name: 'Mars', angle: Math.PI, speed: 0.2, radius: ORBIT_RAD_MARS, pos: { x: 50, y: 50 } },
@@ -36,7 +36,7 @@ const PLANET_DATA = {
 
 const PLANET_STATES = { earth: 'nominal', moon: 'nominal', mars: 'nominal' };
 
-// Session state
+// Current session data - who's logged in, what they've done
 let user = null;
 let codename = localStorage.getItem('void_relay_codename') || 'GUEST';
 let stats = { marsPings: 0 };
@@ -49,13 +49,13 @@ let recentLogs = [];
 let selectedReplayIndex = -1;
 let unlockedCache = new Set();
 
-// Live hazards
+// Active hazards floating around the simulation
 const asteroids = [];
 const activeStorms = new Set();
 
-// ============================================================================
-// INITIALIZATION
-// ============================================================================
+// ╔══════════════════════════════════════════════════════════════════════════╗
+// ║  APP INITIALIZATION - Where everything starts up                         ║
+// ╚══════════════════════════════════════════════════════════════════════════╝
 
 async function initApp() {
     console.log('[init] starting...');
@@ -204,9 +204,9 @@ function updateIntelligenceConsole() {
     if (difficultyEl) difficultyEl.innerText = difficulty;
 }
 
-// ============================================================================
-// UI SETUP
-// ============================================================================
+// ╔══════════════════════════════════════════════════════════════════════════╗
+// ║  UI SETUP - Button handlers, event listeners, all the interactive stuff  ║
+// ╚══════════════════════════════════════════════════════════════════════════╝
 
 function setupStaticUI() {
     const stars = document.getElementById('stars-container');
@@ -342,110 +342,9 @@ async function checkAchievements(target) {
     }
 }
 
-// ============================================================================
-// SECTION 4: SIMULATION & ENVIRONMENT
-// ============================================================================
-
-function setupStaticUI() {
-    // This function sets up all the UI elements - stars, theme, buttons, the whole vibe
-    const stars = document.getElementById('stars-container');
-    if (stars) {
-        for (let i = 0; i < 100; i++) {
-            const s = document.createElement('div');
-            s.className = 'star';
-            s.style.width = s.style.height = Math.random() * 2 + 'px';
-            s.style.left = Math.random() * 100 + '%'; s.style.top = Math.random() * 100 + '%';
-            s.style.opacity = Math.random();
-            stars.appendChild(s);
-        }
-    }
-
-    const savedTheme = localStorage.getItem('void_theme') || 'space';
-    document.body.dataset.theme = savedTheme;
-    const themeSelect = document.getElementById('theme-select');
-    if (themeSelect) {
-        themeSelect.value = savedTheme;
-        themeSelect.onchange = (e) => {
-            document.body.dataset.theme = e.target.value;
-            localStorage.setItem('void_theme', e.target.value);
-            addLog(`Theme changed to ${e.target.value}`, 'sys');
-        };
-    }
-
-    const vizContainer = document.getElementById('viz-container');
-    const toggleMiniviewBtn = document.getElementById('toggle-miniview');
-    if (vizContainer && toggleMiniviewBtn) {
-        if (localStorage.getItem('void_mini_view') === '1') {
-            vizContainer.classList.add('mini');
-            toggleMiniviewBtn.innerText = "Expand";
-        }
-        toggleMiniviewBtn.onclick = () => {
-            const isMini = vizContainer.classList.toggle('mini');
-            localStorage.setItem('void_mini_view', isMini ? '1' : '0');
-            toggleMiniviewBtn.innerText = isMini ? "Expand" : "Miniview";
-        };
-    }
-
-    document.getElementById('sim-speed')?.addEventListener('input', e => { 
-        const speedVal = document.getElementById('speed-val');
-        if (speedVal) speedVal.innerText = `${e.target.value}x`; 
-        updateLatencyEstimate();
-    });
-    document.getElementById('packet-loss')?.addEventListener('input', e => { 
-        const lossVal = document.getElementById('loss-val');
-        if (lossVal) lossVal.innerText = `${e.target.value}%`; 
-    });
-    document.getElementById('origin')?.addEventListener('change', updateLatencyEstimate);
-    document.getElementById('destination')?.addEventListener('change', updateLatencyEstimate);
-
-    document.getElementById('open-knowledge').onclick = () => document.getElementById('knowledge-modal').classList.remove('hidden');
-    document.getElementById('close-knowledge').onclick = () => document.getElementById('knowledge-modal').classList.add('hidden');
-    document.getElementById('open-telemetry').onclick = openTelemetry;
-    document.getElementById('close-telemetry').onclick = () => document.getElementById('telemetry-panel').style.display = 'none';
-    document.getElementById('replay-btn').onclick = replayTelemetry;
-    document.getElementById('export-btn').onclick = () => exportTelemetry(recentLogs);
-    document.getElementById('clear-logs-btn').onclick = () => { recentLogs = []; openTelemetry(); };
-
-    document.getElementById('strategy')?.addEventListener('change', e => {
-        currentStrategy = e.target.value;
-        addLog(`Strategy: ${currentStrategy}`, 'sys');
-    });
-
-    const loginBtn = document.getElementById('auth-login');
-    const signupBtn = document.getElementById('auth-signup');
-    const guestBtn = document.getElementById('auth-guest');
-    const logoutBtn = document.getElementById('logout-btn');
-    const sendBtn = document.getElementById('send-btn');
-    
-    if (loginBtn) loginBtn.onclick = () => handleAuth('login');
-    if (signupBtn) signupBtn.onclick = () => handleAuth('signup');
-    if (guestBtn) guestBtn.onclick = async () => {
-        codename = "GUEST_" + Math.floor(Math.random() * 9999);
-        user = { is_anonymous: true };
-        const authModal = document.getElementById('auth-modal');
-        if (authModal) authModal.style.display = 'none';
-        resetUIState();
-        await initDataForUser();
-    };
-    if (logoutBtn) logoutBtn.onclick = async () => { 
-        await sb.auth.signOut();
-    };
-    if (sendBtn) {
-        sendBtn.onclick = async () => {
-            if (!isInitialized || sendBtn.disabled) return;
-            const from = document.getElementById('origin')?.value;
-            const to = document.getElementById('destination')?.value;
-            if (from === to) return showToast("LOOPBACK ERROR", "error");
-            if (currentStrategy === 'EMERGENCY') {
-                if (emergencyTokens <= 0) return addLog("TOKENS DEPLETED", "error");
-                emergencyTokens--;
-                localStorage.setItem('emergency_tokens', emergencyTokens);
-                document.getElementById('emergency-count').innerText = emergencyTokens;
-            }
-            transmit(from, to, document.getElementById('message')?.value || '', currentStrategy);
-        };
-    }
-}
+// ╔══════════════════════════════════════════════════════════════════════════╗
+// ║  ENVIRONMENT & HAZARDS - Storms, flares, asteroids, planet states        ║
+// ╚══════════════════════════════════════════════════════════════════════════╝
 
 function spawnSolarStorm() {
     const radius = 150;
@@ -884,9 +783,9 @@ async function resolveSignal(pkt, targetPlanet, signalState, outcome, failureRea
     updateIntelligenceConsole();
 }
 
-// ============================================================================
-// SECTION 5: SIMULATION & ENVIRONMENT
-// ============================================================================
+// ╔══════════════════════════════════════════════════════════════════════════╗
+// ║  HELPER FUNCTIONS - Toasts, logs, telemetry stuff                       ║
+// ╚══════════════════════════════════════════════════════════════════════════╝
 
 function showToast(msg, type) {
     const a = document.getElementById('toast-area'), t = document.createElement('div');
@@ -943,20 +842,5 @@ function exportTelemetry(logs) {
     const a = document.createElement('a'); a.href = url; a.download = 'voidrelay-telemetry.json'; a.click();
 }
 
-// ============================================================================
-// INITIALIZATION
-// ============================================================================
-
+// Start everything when the page loads
 document.addEventListener('DOMContentLoaded', initApp);
-
-console.info("═══════════════════════════════════════════════════════════");
-console.info("SAFE LEADERBOARD UPGRADE CHECK:");
-console.info("✔ All users stored in DB");
-console.info("✔ Top 5 displayed on main page");
-console.info("✔ Full leaderboard page shows all users (leaderboard.html)");
-console.info("✔ No simulation logic modified");
-console.info("✔ Upsert logic intact - no data loss");
-console.info("✔ Auth flows unchanged");
-console.info("═══════════════════════════════════════════════════════════");
-console.info("SAFE LEADERBOARD UPGRADE COMPLETE");
-console.info("DATABASE ALIGNMENT COMPLETE");
