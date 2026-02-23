@@ -145,7 +145,12 @@ async function handleAuth(mode) {
             // Signup flow - create the user and their profile
             result = await sb.auth.signUp({ email, password });
             if (result.data.user) {
-                await sb.from('profiles').insert([{ id: result.data.user.id, codename: username }]);
+                // Create the profile so we can store their codename
+                const { error: profileError } = await sb.from('profiles').insert([{ id: result.data.user.id, codename: username }]);
+                if (profileError) {
+                    console.error('Profile creation failed during signup:', profileError);
+                    throw new Error(`Profile creation failed: ${profileError.message}`);
+                }
             }
         }
         
@@ -538,6 +543,12 @@ async function updateLeaderboard(pings) {
         console.warn("Database not available, can't sync leaderboard");
         return;
     }
+    
+    // Make sure codename is actually set before we try to update
+    if (!codename || codename === 'GUEST' || codename === 'OPERATOR') {
+        console.warn("Codename not set properly - current value:", codename, "- user:", user?.id);
+        return;
+    }
 
     // Prep the data to send
     const payload = {
@@ -554,8 +565,13 @@ async function updateLeaderboard(pings) {
             .upsert(payload, { onConflict: "user_id" });
 
         if (error) {
-            console.error("Leaderboard upsert failed:", error);
-            addLog("Leaderboard sync failed", "error");
+            console.error("Leaderboard upsert failed - error details:", JSON.stringify(error, null, 2));
+            console.error("Payload being sent:", payload);
+            if (error.message.includes('policies')) {
+                addLog("Leaderboard access denied - check Supabase permissions", "error");
+            } else {
+                addLog("Leaderboard sync failed: " + error.message, "error");
+            }
             return;
         }
 
@@ -564,7 +580,7 @@ async function updateLeaderboard(pings) {
         await loadLeaderboard();
     } catch (err) {
         console.error("Leaderboard error:", err);
-        addLog("Leaderboard sync unavailable", "error");
+        addLog("Leaderboard sync unavailable: " + err.message, "error");
     }
 }
 
