@@ -149,7 +149,7 @@
                 
                 // Fetch all leaderboard rows
                 const { data, error } = await sb
-                    .from("leaderboards")
+                    .from("leaderboard")
                     .select("user_id, codename, mars_pings")
                     .order("mars_pings", { ascending: false });
                 

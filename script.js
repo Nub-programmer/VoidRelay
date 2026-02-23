@@ -572,7 +572,7 @@ async function loadLeaderboard() {
     try {
         // Fetch ALL rows (no limit at DB level)
         const { data, error } = await sb
-            .from("leaderboards")
+            .from("leaderboard")
             .select("user_id, codename, mars_pings")
             .order("mars_pings", { ascending: false });
 
@@ -639,12 +639,12 @@ async function updateLeaderboard(pings) {
         user_id: user.id,
         codename: codename,
         mars_pings: pings,
-        updated_at: new Date().toISOString()
+        storms_survived: 0
     };
 
     try {
         const { error } = await sb
-            .from("leaderboards")
+            .from("leaderboard")
             .upsert(payload, { onConflict: "user_id" });
 
         if (error) {
@@ -950,3 +950,4 @@ console.info("✔ Upsert logic intact - no data loss");
 console.info("✔ Auth flows unchanged");
 console.info("═══════════════════════════════════════════════════════════");
 console.info("SAFE LEADERBOARD UPGRADE COMPLETE");
+console.info("DATABASE ALIGNMENT COMPLETE");
