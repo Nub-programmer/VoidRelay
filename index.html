@@ -7,18 +7,49 @@
     <link rel="stylesheet" href="style.css">
     <link href="https://fonts.googleapis.com/css2?family=Gaegu&family=VT323&display=swap" rel="stylesheet">
     <script>
-        // 🛠️ Gen-Z Ops: Safe secret injection
-        // Pulling from Replit environment variables directly
         window.VOID_SB_URL = "https://mezsypcnpscltrhrqtdb.supabase.co";
         window.VOID_SB_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1lenN5cGNucHNjbHRyaHJxdGRiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAwMDkxMDcsImV4cCI6MjA4NTU4NTEwN30.KGPICwFTn-Hvyn24uhhwA8YccG_D87fmPfZqCSZzerE";
     </script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
-<body>
-    <div class="stars"></div>
+<body data-theme="space">
+    <div class="stars-container" id="stars-container"></div>
     <div class="crt-overlay"></div>
 
     <div id="app">
+        <!-- Knowledge Modal -->
+        <div id="knowledge-modal" class="modal hidden">
+            <div class="modal-content retro-scroll">
+                <h2>ABOUT VOID_RELAY</h2>
+                <div class="knowledge-body">
+                    <p>VoidRelay is a retro simulator exploring interplanetary communication challenges: latency, interference, and limited windows.</p>
+                    <h3>OPERATIONS</h3>
+                    <ul>
+                        <li>Send pings to planets during nominal windows.</li>
+                        <li>Monitor solar storms; they increase packet loss.</li>
+                        <li>EMERGENCY strategy is required for BLACKOUT states.</li>
+                    </ul>
+                </div>
+                <div class="modal-btns">
+                    <button id="close-knowledge" class="btn-primary">RETURN</button>
+                </div>
+                <p class="footer-note">Built by Atharv (Nubprogramer) — Axoninnova Community</p>
+            </div>
+        </div>
+
+        <!-- Telemetry Replay Modal -->
+        <div id="telemetry-panel" class="telemetry-panel">
+            <div class="box-header">TELEMETRY_LOGS</div>
+            <div id="telemetry-list" class="telemetry-list"></div>
+            <div class="telemetry-json-view" id="telemetry-json-view"></div>
+            <div class="telemetry-controls">
+                <button id="replay-btn" class="btn-pill">REPLAY</button>
+                <button id="export-btn" class="btn-pill">EXPORT</button>
+                <button id="clear-logs-btn" class="btn-pill">CLEAR</button>
+                <button id="close-telemetry" class="btn-pill">CLOSE</button>
+            </div>
+        </div>
+
         <!-- Auth Modal -->
         <div id="auth-modal" class="modal">
             <div class="modal-content">
@@ -28,60 +59,75 @@
                     <input type="password" id="password-input" placeholder="PASSWORD...">
                 </div>
                 <div class="modal-btns">
-                    <button id="auth-login">LOGIN</button>
-                    <button id="auth-signup">SIGNUP</button>
+                    <button id="auth-login" class="btn-primary">LOGIN</button>
+                    <button id="auth-signup" class="btn-primary">SIGNUP</button>
+                    <button id="auth-guest" class="btn-primary" style="background: #333; margin-top: 10px; font-size: 1rem;">GUEST MODE</button>
                 </div>
-                <button id="auth-guest" style="background: #333; margin-top: 10px; font-size: 1rem;">CONTINUE AS GUEST</button>
                 <p id="auth-error" style="color: var(--accent); font-size: 0.8rem; margin-top: 10px;"></p>
             </div>
         </div>
 
         <header>
             <div class="header-main">
-                <h1 class="glitch-text">VOID_RELAY</h1>
+                <div class="header-left">
+                    <h1 class="glitch-text">VOID_RELAY</h1>
+                    <button id="open-knowledge" class="btn-pill">INFO</button>
+                    <button id="open-telemetry" class="btn-pill">LOGS</button>
+                    <select id="theme-select" class="btn-pill">
+                        <option value="space">SPACE_THEME</option>
+                        <option value="neon">NEON_THEME</option>
+                    </select>
+                </div>
                 <div class="user-info">
                     ID: <span id="user-codename">GUEST</span>
                     <button id="logout-btn" class="hidden" style="font-size: 0.8rem; padding: 2px 5px; margin-left: 10px;">LOGOUT</button>
                 </div>
             </div>
-            <p class="tagline">Interplanetary Messaging V2.0 // Persistence Active</p>
         </header>
 
         <div class="main-grid">
-            <!-- Left: Controls & Missions -->
             <div class="col-left">
-                <div class="box mission-panel">
-                    <div class="box-header">DAILY_MISSION</div>
-                    <div id="daily-mission-content">
-                        <p id="mission-title">Loading mission...</p>
-                        <div class="progress-bar"><div id="mission-progress"></div></div>
-                        <p id="mission-status">0/0</p>
-                    </div>
+                <div class="box achievements-panel-left">
+                    <div class="box-header">OPERATOR_ACHIEVEMENTS</div>
+                    <div id="achievements-list" class="achievements-list-scroll"></div>
+                    <p id="achievements-error" class="error-text"></p>
                 </div>
 
                 <div class="box terminal">
                     <div class="box-header">CONSTRUCT_SIGNAL</div>
                     <div class="controls">
                         <div class="row">
-                            <label>FROM:</label>
+                            <label>ORIGIN:</label>
                             <select id="origin">
-                                <option value="earth">Earth 🌍</option>
-                                <option value="moon">The Moon 🌙</option>
-                                <option value="mars">Mars 🔴</option>
+                                <option value="earth">Earth</option>
+                                <option value="moon">Moon</option>
+                                <option value="mars">Mars</option>
                             </select>
                         </div>
                         <div class="row">
-                            <label>TO:</label>
+                            <label>TARGET:</label>
                             <select id="destination">
-                                <option value="moon">The Moon 🌙</option>
-                                <option value="earth">Earth 🌍</option>
-                                <option value="mars" selected>Mars 🔴</option>
+                                <option value="moon">Moon</option>
+                                <option value="earth">Earth</option>
+                                <option value="mars" selected>Mars</option>
                             </select>
                         </div>
                         <div class="row">
-                            <textarea id="message" placeholder="Type something cool..."></textarea>
+                            <label>STRATEGY:</label>
+                            <select id="strategy">
+                                <option value="NORMAL">NORMAL (STD)</option>
+                                <option value="BOOST">BOOST (-15% LOSS)</option>
+                                <option value="EMERGENCY">EMERGENCY (TOKENS: <span id="emergency-count">2</span>)</option>
+                            </select>
+                        </div>
+                        <div class="row">
+                            <textarea id="message" placeholder="Uplink payload..."></textarea>
                         </div>
                         
+                        <div class="latency-meter" id="latency-meter">
+                            ESTIMATED DELAY: <span id="delay-val">0.0s</span>
+                        </div>
+
                         <div class="sliders">
                             <div class="slider-box">
                                 <label>SPEED: <span id="speed-val">1x</span></label>
@@ -93,57 +139,47 @@
                             </div>
                         </div>
 
-                        <button id="send-btn">RELA_Y SIGNAL</button>
+                        <button id="send-btn" class="btn-primary">TRANSMIT</button>
                     </div>
                 </div>
             </div>
 
-            <!-- Center: Visualizer -->
-            <div class="box viz">
-                <div class="box-header">ORBITAL_VIEW</div>
-                <div class="space-map">
-                    <div class="body earth" title="Earth"></div>
-                    <div class="body moon" title="Moon"></div>
-                    <div class="body mars" title="Mars"></div>
+            <div class="box viz" id="viz-container">
+                <div class="box-header">
+                    ORBITAL_DISPLAY
+                    <button id="toggle-miniview" class="btn-pill" style="float: right; margin-top: -2px;">Miniview</button>
+                </div>
+                <div class="space-map" id="orbital-view">
+                    <div id="solar-storm-layer"></div>
+                    <div class="body earth" title="Earth"><span class="state-badge">NOMINAL</span></div>
+                    <div class="body moon" title="Moon"><span class="state-badge">NOMINAL</span></div>
+                    <div class="body mars" title="Mars"><span class="state-badge">NOMINAL</span></div>
+                    <div id="asteroid-layer"></div>
                     <div id="signal-layer"></div>
                 </div>
-                <div class="achievements-mini" id="achievements-list">
-                    <!-- Achievements pop up here -->
-                </div>
             </div>
 
-            <!-- Right: Feed & Leaderboard -->
             <div class="col-right">
                 <div class="box leaderboard">
-                    <div class="box-header">TOP_STATIONS</div>
-                    <div id="leaderboard-list" class="list-content">
-                        <!-- Leaderboard entries -->
-                    </div>
+                    <div class="box-header">TOP_OPERATORS</div>
+                    <div id="leaderboard-list" class="list-content"></div>
                 </div>
 
                 <div class="box feed">
                     <div class="box-header">SIGNAL_FEED</div>
                     <div id="logs" class="log-entries">
-                        <div class="entry sys">System booted. Ready to ping.</div>
+                        <div class="entry sys">Boot sequence complete.</div>
                     </div>
                 </div>
             </div>
         </div>
 
         <footer>
-            <p>Built by Atharv (Nubprogramer) · <a href="https://dsc.gg/axoninnova" target="_blank">Axoninnova Community</a></p>
+            <p>VOID_RELAY V6.5 // AUTH_SAFE // REALISM_VALIDATED</p>
         </footer>
     </div>
 
-    <!-- Solar Storm Popup -->
-    <div id="storm-warning" class="hidden">
-        <div class="storm-content">
-            <h2>⚠️ SOLAR STORM DETECTED ⚠️</h2>
-            <p>High radiation! Packet loss is spiked!</p>
-            <button onclick="document.getElementById('storm-warning').classList.add('hidden')">GOT IT</button>
-        </div>
-    </div>
-
+    <div id="toast-area"></div>
     <script src="script.js"></script>
 </body>
 </html>
