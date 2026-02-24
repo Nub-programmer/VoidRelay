@@ -49,6 +49,7 @@ let currentStrategy = 'NORMAL';
 let recentLogs = [];
 let selectedReplayIndex = -1;
 let unlockedCache = new Set();
+let isLoadingLeaderboard = false;  // Prevents race condition with duplicate rendering
 
 // Active hazards floating around the simulation
 const asteroids = [];
@@ -470,18 +471,26 @@ function updateLatencyEstimate() {
 }
 
 async function loadLeaderboard() {
-    const container = document.getElementById("leaderboard-list");
-    if (!container) return;
-    container.innerHTML = "";
-
-    // Make sure database is actually connected
-    if (!sb) {
-        console.warn("Database not initialized, showing offline mode");
-        container.innerHTML = "<div>Database unavailable (offline mode).</div>";
+    // Prevent race condition - don't load if already loading
+    if (isLoadingLeaderboard) {
+        console.log("Leaderboard already loading, skipping duplicate call");
         return;
     }
-
+    
+    isLoadingLeaderboard = true;
+    
     try {
+        const container = document.getElementById("leaderboard-list");
+        if (!container) return;
+        container.innerHTML = "";
+
+        // Make sure database is actually connected
+        if (!sb) {
+            console.warn("Database not initialized, showing offline mode");
+            container.innerHTML = "<div>Database unavailable (offline mode).</div>";
+            return;
+        }
+
         // Fetch ALL users from the leaderboard table, sorted by uplinks
         const { data, error } = await sb
             .from("leaderboard")
@@ -532,7 +541,12 @@ async function loadLeaderboard() {
 
     } catch (err) {
         console.error("Leaderboard error:", err);
-        container.innerHTML = `<div>Leaderboard unavailable: ${err.message || 'Unknown error'}</div>`;
+        const container = document.getElementById("leaderboard-list");
+        if (container) {
+            container.innerHTML = `<div>Leaderboard unavailable: ${err.message || 'Unknown error'}</div>`;
+        }
+    } finally {
+        isLoadingLeaderboard = false;
     }
 }
 
