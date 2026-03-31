@@ -352,9 +352,6 @@ async function checkAchievements(target) {
     }
 }
 
-// ========================================================
-// ENVIRONMENT & HAZARDS - storms, flares, asteroids
-// ========================================================
 
 function spawnSolarStorm() {
     const radius = 150;
@@ -815,9 +812,6 @@ async function resolveSignal(pkt, targetPlanet, signalState, outcome, failureRea
     updateIntelligenceConsole();
 }
 
-// ========================================================
-// HELPER FUNCTIONS - toasts, logs, telemetry stuff
-// ========================================================
 
 function showToast(msg, type) {
     const a = document.getElementById('toast-area'), t = document.createElement('div');
