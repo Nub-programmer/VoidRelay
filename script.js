@@ -12,9 +12,9 @@ if (supabaseKey && supabaseUrl) {
 
 // How fast planets orbit - tweak this if you want things to move faster/slower
 const ORBIT_SPEED_MULT = 0.0008;
-const ORBIT_RAD_EARTH = 15;
+const ORBIT_RAD_EARTH = 16;
 const ORBIT_RAD_MARS = 35;
-const ORBIT_RAD_MOON = 6;
+const ORBIT_RAD_MOON = 7;
 
 // Storm settings - basically how often they spawn and how bad they are
 const STORM_CONFIG = {
